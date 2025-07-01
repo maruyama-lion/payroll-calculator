@@ -45,7 +45,7 @@ import {
 type PaymentType = "dispatch" | "annual"
 
 // 支払い状態
-type PaymentStatus = "draft" | "calculated" | "confirmed" | "paid" | "cancelled"
+type PaymentStatus = "editing" | "confirmed" | "paid"
 
 // 現在のページ
 type CurrentPage = "management" | "calculation" | "member-detail" | "batch-detail"
@@ -70,8 +70,8 @@ interface PaymentBatch {
   type: PaymentType
   status: PaymentStatus
   createdDate: string
-  calculatedDate?: string
   confirmedDate?: string
+  scheduledPaymentDate?: string
   paymentDate?: string
   description: string
   totalAmount: number
@@ -179,19 +179,15 @@ const PAYMENT_TYPE_LABELS = {
 }
 
 const PAYMENT_STATUS_LABELS = {
-  draft: "作成中",
-  calculated: "計算済",
-  confirmed: "確定",
+  editing: "編集中",
+  confirmed: "確定済",
   paid: "支払済",
-  cancelled: "取消",
 }
 
 const PAYMENT_STATUS_COLORS = {
-  draft: "bg-gray-100 text-gray-800",
-  calculated: "bg-yellow-100 text-yellow-800",
+  editing: "bg-gray-100 text-gray-800",
   confirmed: "bg-blue-100 text-blue-800",
   paid: "bg-green-100 text-green-800",
-  cancelled: "bg-red-100 text-red-800",
 }
 
 export default function Component() {
@@ -290,8 +286,8 @@ export default function Component() {
       type: "dispatch",
       status: "paid",
       createdDate: "2024-01-25",
-      calculatedDate: "2024-01-26",
       confirmedDate: "2024-01-28",
+      scheduledPaymentDate: "2024-01-31",
       paymentDate: "2024-01-31",
       description: "1月の火災・救助出動に対する報酬",
       totalAmount: 125000,
@@ -302,12 +298,24 @@ export default function Component() {
       id: "pay002",
       name: "2024年度年額報酬",
       type: "annual",
-      status: "calculated",
+      status: "confirmed",
       createdDate: "2024-01-01",
-      calculatedDate: "2024-01-02",
+      confirmedDate: "2024-01-02",
+      scheduledPaymentDate: "2024-03-31",
       description: "2024年度の年額基本報酬",
       totalAmount: 350000,
       memberCount: 5,
+      createdBy: "admin",
+    },
+    {
+      id: "pay003",
+      name: "2024年2月出動報酬",
+      type: "dispatch",
+      status: "editing",
+      createdDate: "2024-02-25",
+      description: "2月の火災・救助出動に対する報酬（作成中）",
+      totalAmount: 0,
+      memberCount: 0,
       createdBy: "admin",
     },
   ])
@@ -372,6 +380,9 @@ export default function Component() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [payrollCalculations, setPayrollCalculations] = useState<PayrollCalculation[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  
+  // フィルタリング用の状態
+  const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("all")
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("ja-JP", {
@@ -413,7 +424,7 @@ export default function Component() {
       id: `pay${Date.now()}`,
       name: newBatchData.name,
       type: newBatchData.type,
-      status: "draft",
+      status: "editing",
       createdDate: new Date().toISOString().split("T")[0],
       description: newBatchData.description,
       totalAmount: 0,
@@ -438,13 +449,14 @@ export default function Component() {
     setIsEditingBatch(false)
   }
 
-  const updatePaymentBatchStatus = (batchId: string, status: PaymentStatus) => {
+  const updatePaymentBatchStatus = (batchId: string, status: PaymentStatus, scheduledPaymentDate?: string) => {
     const updateData: Partial<PaymentBatch> = { status }
 
-    if (status === "calculated") {
-      updateData.calculatedDate = new Date().toISOString().split("T")[0]
-    } else if (status === "confirmed") {
+    if (status === "confirmed") {
       updateData.confirmedDate = new Date().toISOString().split("T")[0]
+      if (scheduledPaymentDate) {
+        updateData.scheduledPaymentDate = scheduledPaymentDate
+      }
     } else if (status === "paid") {
       updateData.paymentDate = new Date().toISOString().split("T")[0]
     }
@@ -719,8 +731,8 @@ export default function Component() {
                 ...batch,
                 totalAmount,
                 memberCount,
-                status: "calculated" as PaymentStatus,
-                calculatedDate: new Date().toISOString().split("T")[0],
+                status: "editing" as PaymentStatus,
+                
               }
             : batch,
         ),
@@ -731,78 +743,22 @@ export default function Component() {
     alert("計算結果を保存しました")
   }
 
-  const getStatusActions = (batch: PaymentBatch) => {
-    switch (batch.status) {
-      case "draft":
-        return (
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "calculated")}
-              className="bg-transparent"
-            >
-              計算実行
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "cancelled")}
-              className="bg-transparent text-red-600 hover:text-red-700"
-            >
-              取消
-            </Button>
-          </div>
-        )
-      case "calculated":
-        return (
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "confirmed")}
-              className="bg-transparent"
-            >
-              確定
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "draft")}
-              className="bg-transparent"
-            >
-              編集に戻す
-            </Button>
-          </div>
-        )
-      case "confirmed":
-        return (
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "paid")}
-              className="bg-transparent text-green-600 hover:text-green-700"
-            >
-              支払完了
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "calculated")}
-              className="bg-transparent"
-            >
-              確定解除
-            </Button>
-          </div>
-        )
-      case "paid":
-        return <Badge className="bg-green-100 text-green-800">支払済</Badge>
-      case "cancelled":
-        return <Badge className="bg-red-100 text-red-800">取消済</Badge>
-      default:
-        return null
+  // フィルタリングされた支払いバッチを取得
+  const getFilteredBatches = () => {
+    if (statusFilter === "all") {
+      return paymentBatches
     }
+    return paymentBatches.filter(batch => batch.status === statusFilter)
+  }
+
+  // サマリー統計を取得
+  const getSummaryStats = () => {
+    const total = paymentBatches.length
+    const editing = paymentBatches.filter(b => b.status === "editing").length
+    const confirmed = paymentBatches.filter(b => b.status === "confirmed").length
+    const paid = paymentBatches.filter(b => b.status === "paid").length
+    
+    return { total, editing, confirmed, paid }
   }
 
   const getMemberPaymentHistory = (memberId: string) => {
@@ -1167,7 +1123,54 @@ export default function Component() {
           <p className="text-muted-foreground">支払いバッチの管理と団員明細の閲覧</p>
         </div>
 
-        {/* 支払いバッチ管理 - Tabsを削除して直接表示 */}
+        {/* 支払いバッチ一覧サマリー */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {(() => {
+            const stats = getSummaryStats()
+            return (
+              <>
+                <Card 
+                  className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "all" ? "ring-2 ring-blue-500" : ""}`}
+                  onClick={() => setStatusFilter("all")}
+                >
+                  <CardContent className="p-4 text-center">
+                    <p className="text-sm text-muted-foreground">総支払いバッチ数</p>
+                    <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "editing" ? "ring-2 ring-gray-500" : ""}`}
+                  onClick={() => setStatusFilter("editing")}
+                >
+                  <CardContent className="p-4 text-center">
+                    <p className="text-sm text-muted-foreground">編集中</p>
+                    <p className="text-2xl font-bold text-gray-600">{stats.editing}</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "confirmed" ? "ring-2 ring-blue-500" : ""}`}
+                  onClick={() => setStatusFilter("confirmed")}
+                >
+                  <CardContent className="p-4 text-center">
+                    <p className="text-sm text-muted-foreground">確定済</p>
+                    <p className="text-2xl font-bold text-blue-600">{stats.confirmed}</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "paid" ? "ring-2 ring-green-500" : ""}`}
+                  onClick={() => setStatusFilter("paid")}
+                >
+                  <CardContent className="p-4 text-center">
+                    <p className="text-sm text-muted-foreground">支払済</p>
+                    <p className="text-2xl font-bold text-green-600">{stats.paid}</p>
+                  </CardContent>
+                </Card>
+              </>
+            )
+          })()}
+        </div>
+
+        {/* 支払いバッチ一覧 */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -1175,6 +1178,11 @@ export default function Component() {
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-blue-600" />
                   支払いバッチ一覧
+                  {statusFilter !== "all" && (
+                    <Badge className={PAYMENT_STATUS_COLORS[statusFilter]}>
+                      {PAYMENT_STATUS_LABELS[statusFilter]}でフィルタ中
+                    </Badge>
+                  )}
                 </CardTitle>
                 <CardDescription>出動報酬・年額報酬の支払いを管理します</CardDescription>
               </div>
@@ -1236,7 +1244,7 @@ export default function Component() {
                     </DialogHeader>
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="batchName">支払い名称</Label>
+                        <Label htmlFor="batchName">支払い名</Label>
                         <Input
                           id="batchName"
                           value={newBatchData.name}
@@ -1245,7 +1253,7 @@ export default function Component() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="batchType">支払い種別</Label>
+                        <Label htmlFor="batchType">報酬種別</Label>
                         <Select
                           value={newBatchData.type}
                           onValueChange={(value: PaymentType) => setNewBatchData({ ...newBatchData, type: value })}
@@ -1260,7 +1268,7 @@ export default function Component() {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="batchDescription">説明</Label>
+                        <Label htmlFor="batchDescription">説明（任意）</Label>
                         <Textarea
                           id="batchDescription"
                           value={newBatchData.description}
@@ -1288,130 +1296,81 @@ export default function Component() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {paymentBatches.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">支払いバッチがありません</p>
-                  <p className="text-sm text-muted-foreground">「新規支払い作成」ボタンから作成してください</p>
-                </div>
-              ) : (
-                paymentBatches.map((batch) => (
-                  <Card key={batch.id} className="border-l-4 border-l-blue-500">
+              {(() => {
+                const filteredBatches = getFilteredBatches()
+                if (filteredBatches.length === 0) {
+                  return (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground">
+                        {statusFilter === "all" 
+                          ? "支払いバッチがありません" 
+                          : `${PAYMENT_STATUS_LABELS[statusFilter]}の支払いバッチがありません`}
+                      </p>
+                      <p className="text-sm text-muted-foreground">「新規支払い作成」ボタンから作成してください</p>
+                    </div>
+                  )
+                }
+                
+                return filteredBatches.map((batch) => (
+                  <Card 
+                    key={batch.id} 
+                    className="border-l-4 border-l-blue-500 cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => openBatchDetail(batch)}
+                  >
                     <CardContent className="p-6">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-3 flex-1">
-                          <div className="flex items-center gap-3">
-                            <h3 className="text-lg font-semibold">{batch.name}</h3>
-                            <Badge variant="outline">{PAYMENT_TYPE_LABELS[batch.type]}</Badge>
-                            <Badge className={PAYMENT_STATUS_COLORS[batch.status]}>
-                              {PAYMENT_STATUS_LABELS[batch.status]}
-                            </Badge>
-                          </div>
-                          <p className="text-muted-foreground">{batch.description}</p>
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">作成日</p>
-                              <p className="font-medium">{batch.createdDate}</p>
+                      <div className="space-y-4">
+                        {/* ヘッダー行 */}
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-3">
+                              <h3 className="text-lg font-semibold">{batch.name}</h3>
+                              <Badge variant="outline">{PAYMENT_TYPE_LABELS[batch.type]}</Badge>
+                              <Badge className={PAYMENT_STATUS_COLORS[batch.status]}>
+                                {PAYMENT_STATUS_LABELS[batch.status]}
+                              </Badge>
                             </div>
-                            {batch.calculatedDate && (
-                              <div>
-                                <p className="text-muted-foreground">計算日</p>
-                                <p className="font-medium">{batch.calculatedDate}</p>
-                              </div>
-                            )}
-                            {batch.paymentDate && (
-                              <div>
-                                <p className="text-muted-foreground">支払日</p>
-                                <p className="font-medium">{batch.paymentDate}</p>
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-muted-foreground">対象者数</p>
-                              <p className="font-medium">{batch.memberCount}名</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">総支給額</p>
-                              <p className="font-medium text-lg">{formatCurrency(batch.totalAmount)}</p>
-                            </div>
+                                                         {/* 説明文（レスポンシブ省略） */}
+                             <p className="text-muted-foreground text-sm overflow-hidden text-ellipsis whitespace-nowrap md:whitespace-normal md:line-clamp-2">
+                               {batch.description}
+                             </p>
                           </div>
                         </div>
-                        <div className="flex flex-col gap-2 ml-4">
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openCalculation(batch)}
-                              className="bg-transparent"
-                            >
-                              <Calculator className="h-4 w-4 mr-1" />
-                              給与計算
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openBatchDetail(batch)}
-                              className="bg-transparent"
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              詳細
-                            </Button>
+                        
+                        {/* 詳細情報 */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">作成日</p>
+                            <p className="font-medium">{batch.createdDate.replace(/-/g, '/')}</p>
                           </div>
-                          <div className="flex gap-2">
-                            {batch.status !== "cancelled" && batch.status !== "paid" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => deleteBatch(batch.id)}
-                                className="bg-transparent text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                削除
-                              </Button>
-                            )}
+                          {batch.confirmedDate && (
+                            <div>
+                              <p className="text-muted-foreground">計算日（確定日）</p>
+                              <p className="font-medium">{batch.confirmedDate.replace(/-/g, '/')}</p>
+                            </div>
+                          )}
+                          {batch.scheduledPaymentDate && (
+                            <div>
+                              <p className="text-muted-foreground">支払い予定日</p>
+                              <p className="font-medium">{batch.scheduledPaymentDate.replace(/-/g, '/')}</p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-muted-foreground">対象者数</p>
+                            <p className="font-medium">{batch.memberCount}名</p>
                           </div>
-                          <div className="mt-2">{getStatusActions(batch)}</div>
+                          <div>
+                            <p className="text-muted-foreground">総支給額</p>
+                            <p className="font-medium text-lg">{formatCurrency(batch.totalAmount)}</p>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 ))
-              )}
+              })()}
             </div>
           </CardContent>
         </Card>
-
-        {/* 統計情報 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">総支払いバッチ数</p>
-              <p className="text-2xl font-bold text-blue-600">{paymentBatches.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">作成中</p>
-              <p className="text-2xl font-bold text-gray-600">
-                {paymentBatches.filter((b) => b.status === "draft").length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">確定済</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {paymentBatches.filter((b) => b.status === "confirmed").length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">支払済</p>
-              <p className="text-2xl font-bold text-green-600">
-                {paymentBatches.filter((b) => b.status === "paid").length}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     )
   }
