@@ -45,7 +45,7 @@ import {
 type PaymentType = "dispatch" | "annual"
 
 // 支払い状態
-type PaymentStatus = "draft" | "calculated" | "confirmed" | "paid" | "cancelled"
+type PaymentStatus = "editing" | "confirmed" | "paid"
 
 // 現在のページ
 type CurrentPage = "management" | "calculation" | "member-detail" | "batch-detail"
@@ -70,7 +70,6 @@ interface PaymentBatch {
   type: PaymentType
   status: PaymentStatus
   createdDate: string
-  calculatedDate?: string
   confirmedDate?: string
   paymentDate?: string
   description: string
@@ -179,19 +178,15 @@ const PAYMENT_TYPE_LABELS = {
 }
 
 const PAYMENT_STATUS_LABELS = {
-  draft: "作成中",
-  calculated: "計算済",
-  confirmed: "確定",
+  editing: "編集中",
+  confirmed: "確定済",
   paid: "支払済",
-  cancelled: "取消",
 }
 
 const PAYMENT_STATUS_COLORS = {
-  draft: "bg-gray-100 text-gray-800",
-  calculated: "bg-yellow-100 text-yellow-800",
+  editing: "bg-gray-100 text-gray-800",
   confirmed: "bg-blue-100 text-blue-800",
   paid: "bg-green-100 text-green-800",
-  cancelled: "bg-red-100 text-red-800",
 }
 
 export default function Component() {
@@ -290,7 +285,6 @@ export default function Component() {
       type: "dispatch",
       status: "paid",
       createdDate: "2024-01-25",
-      calculatedDate: "2024-01-26",
       confirmedDate: "2024-01-28",
       paymentDate: "2024-01-31",
       description: "1月の火災・救助出動に対する報酬",
@@ -302,12 +296,23 @@ export default function Component() {
       id: "pay002",
       name: "2024年度年額報酬",
       type: "annual",
-      status: "calculated",
+      status: "confirmed",
       createdDate: "2024-01-01",
-      calculatedDate: "2024-01-02",
+      confirmedDate: "2024-01-02",
       description: "2024年度の年額基本報酬",
       totalAmount: 350000,
       memberCount: 5,
+      createdBy: "admin",
+    },
+    {
+      id: "pay003",
+      name: "2024年2月出動報酬",
+      type: "dispatch",
+      status: "editing",
+      createdDate: "2024-02-25",
+      description: "2月の火災・救助出動に対する報酬（作成中）",
+      totalAmount: 0,
+      memberCount: 0,
       createdBy: "admin",
     },
   ])
@@ -413,7 +418,7 @@ export default function Component() {
       id: `pay${Date.now()}`,
       name: newBatchData.name,
       type: newBatchData.type,
-      status: "draft",
+      status: "editing",
       createdDate: new Date().toISOString().split("T")[0],
       description: newBatchData.description,
       totalAmount: 0,
@@ -441,9 +446,7 @@ export default function Component() {
   const updatePaymentBatchStatus = (batchId: string, status: PaymentStatus) => {
     const updateData: Partial<PaymentBatch> = { status }
 
-    if (status === "calculated") {
-      updateData.calculatedDate = new Date().toISOString().split("T")[0]
-    } else if (status === "confirmed") {
+    if (status === "confirmed") {
       updateData.confirmedDate = new Date().toISOString().split("T")[0]
     } else if (status === "paid") {
       updateData.paymentDate = new Date().toISOString().split("T")[0]
@@ -457,6 +460,12 @@ export default function Component() {
   }
 
   const openCalculation = (batch: PaymentBatch) => {
+    // 確定済み・支払済みのバッチは編集不可
+    if (batch.status === "confirmed" || batch.status === "paid") {
+      alert("確定済みまたは支払済みのバッチは編集できません。")
+      return
+    }
+    
     setSelectedBatch(batch)
     setCurrentPage("calculation")
     setNewBatchData({
@@ -472,7 +481,16 @@ export default function Component() {
     setPayrollCalculations([])
   }
 
-  const openMemberDetail = (memberId: string) => {
+  const openMemberDetail = (memberId: string, batchId?: string) => {
+    // 管理者以外は編集中のバッチの明細を閲覧不可
+    if (userRole === "member" && batchId) {
+      const batch = paymentBatches.find(b => b.id === batchId)
+      if (batch && batch.status === "editing") {
+        alert("編集中のバッチの明細は閲覧できません。確定後に閲覧可能になります。")
+        return
+      }
+    }
+    
     setSelectedMemberId(memberId)
     setCurrentPage("member-detail")
   }
@@ -719,8 +737,7 @@ export default function Component() {
                 ...batch,
                 totalAmount,
                 memberCount,
-                status: "calculated" as PaymentStatus,
-                calculatedDate: new Date().toISOString().split("T")[0],
+                // ステータスは編集中のまま（確定は別の操作で行う）
               }
             : batch,
         ),
@@ -732,46 +749,24 @@ export default function Component() {
   }
 
   const getStatusActions = (batch: PaymentBatch) => {
+    const handleConfirmBatch = (batchId: string) => {
+      if (window.confirm("支払いバッチを確定しますか？\n確定後は内容の編集ができなくなり、団員が明細を閲覧できるようになります。")) {
+        updatePaymentBatchStatus(batchId, "confirmed")
+      }
+    }
+
     switch (batch.status) {
-      case "draft":
+      case "editing":
         return (
           <div className="flex gap-1">
             <Button
               size="sm"
               variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "calculated")}
-              className="bg-transparent"
-            >
-              計算実行
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "cancelled")}
-              className="bg-transparent text-red-600 hover:text-red-700"
-            >
-              取消
-            </Button>
-          </div>
-        )
-      case "calculated":
-        return (
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "confirmed")}
-              className="bg-transparent"
+              onClick={() => handleConfirmBatch(batch.id)}
+              className="bg-transparent text-blue-600 hover:text-blue-700"
+              disabled={batch.totalAmount === 0 || batch.memberCount === 0}
             >
               確定
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "draft")}
-              className="bg-transparent"
-            >
-              編集に戻す
             </Button>
           </div>
         )
@@ -781,25 +776,19 @@ export default function Component() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "paid")}
+              onClick={() => {
+                if (window.confirm("支払いを完了しますか？\n支払完了後はステータスの変更ができなくなります。")) {
+                  updatePaymentBatchStatus(batch.id, "paid")
+                }
+              }}
               className="bg-transparent text-green-600 hover:text-green-700"
             >
               支払完了
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "calculated")}
-              className="bg-transparent"
-            >
-              確定解除
             </Button>
           </div>
         )
       case "paid":
         return <Badge className="bg-green-100 text-green-800">支払済</Badge>
-      case "cancelled":
-        return <Badge className="bg-red-100 text-red-800">取消済</Badge>
       default:
         return null
     }
@@ -856,6 +845,7 @@ export default function Component() {
               variant="outline"
               onClick={() => openCalculation(selectedBatchForDetail)}
               className="bg-transparent"
+              disabled={selectedBatchForDetail.status !== "editing"}
             >
               <Calculator className="h-4 w-4 mr-2" />
               給与計算
@@ -878,10 +868,10 @@ export default function Component() {
                 <p className="text-sm text-muted-foreground">作成日</p>
                 <p className="font-medium">{selectedBatchForDetail.createdDate}</p>
               </div>
-              {selectedBatchForDetail.calculatedDate && (
+              {selectedBatchForDetail.confirmedDate && (
                 <div>
-                  <p className="text-sm text-muted-foreground">計算日</p>
-                  <p className="font-medium">{selectedBatchForDetail.calculatedDate}</p>
+                  <p className="text-sm text-muted-foreground">確定日</p>
+                  <p className="font-medium">{selectedBatchForDetail.confirmedDate}</p>
                 </div>
               )}
               {selectedBatchForDetail.paymentDate && (
@@ -1002,7 +992,13 @@ export default function Component() {
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          <Button variant="outline" size="sm" className="bg-transparent">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="bg-transparent"
+                            onClick={() => openMemberDetail(detail.memberId, selectedBatchForDetail.id)}
+                            disabled={userRole === "member" && selectedBatchForDetail.status === "editing"}
+                          >
                             <Receipt className="h-4 w-4 mr-2" />
                             詳細を見る
                           </Button>
@@ -1086,8 +1082,8 @@ export default function Component() {
                         支給日: {batch?.paymentDate || "未支給"} | 総額: {formatCurrency(payment.totalAmount)}
                       </CardDescription>
                     </div>
-                    <Badge className={PAYMENT_STATUS_COLORS[batch?.status || "draft"]}>
-                      {PAYMENT_STATUS_LABELS[batch?.status || "draft"]}
+                    <Badge className={PAYMENT_STATUS_COLORS[batch?.status || "editing"]}>
+                      {PAYMENT_STATUS_LABELS[batch?.status || "editing"]}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -1312,10 +1308,10 @@ export default function Component() {
                               <p className="text-muted-foreground">作成日</p>
                               <p className="font-medium">{batch.createdDate}</p>
                             </div>
-                            {batch.calculatedDate && (
+                            {batch.confirmedDate && (
                               <div>
-                                <p className="text-muted-foreground">計算日</p>
-                                <p className="font-medium">{batch.calculatedDate}</p>
+                                <p className="text-muted-foreground">確定日</p>
+                                <p className="font-medium">{batch.confirmedDate}</p>
                               </div>
                             )}
                             {batch.paymentDate && (
@@ -1341,6 +1337,7 @@ export default function Component() {
                               size="sm"
                               onClick={() => openCalculation(batch)}
                               className="bg-transparent"
+                              disabled={batch.status !== "editing"}
                             >
                               <Calculator className="h-4 w-4 mr-1" />
                               給与計算
@@ -1356,7 +1353,7 @@ export default function Component() {
                             </Button>
                           </div>
                           <div className="flex gap-2">
-                            {batch.status !== "cancelled" && batch.status !== "paid" && (
+                            {batch.status === "editing" && (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1389,9 +1386,9 @@ export default function Component() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">作成中</p>
+              <p className="text-sm text-muted-foreground">編集中</p>
               <p className="text-2xl font-bold text-gray-600">
-                {paymentBatches.filter((b) => b.status === "draft").length}
+                {paymentBatches.filter((b) => b.status === "editing").length}
               </p>
             </CardContent>
           </Card>
@@ -1442,7 +1439,7 @@ export default function Component() {
             </div>
           </div>
           <div className="flex gap-2">
-            {selectedBatch.status !== "paid" && (
+            {selectedBatch.status === "editing" && (
               <Dialog open={isEditingBatch} onOpenChange={setIsEditingBatch}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="bg-transparent">
