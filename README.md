@@ -5,6 +5,10 @@
 本プロジェクトは、消防団員や一般従業員の給与計算・支払い管理を行うWebアプリケーションです。  
 Next.js（App Router構成）とTypeScript、Tailwind CSSを用いて構築されています。
 
+## 開発環境
+
+このプロジェクトは **Cursor Pro** を使用して開発されています。
+
 ## 主な機能
 
 ### 1. 給与計算システム（payroll-calculator.tsx）
