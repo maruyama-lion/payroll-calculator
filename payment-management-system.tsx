@@ -45,7 +45,7 @@ import {
 type PaymentType = "dispatch" | "annual"
 
 // 支払い状態
-type PaymentStatus = "draft" | "calculated" | "confirmed" | "paid" | "cancelled"
+type PaymentStatus = "draft" | "confirmed" | "paid"
 
 // 現在のページ
 type CurrentPage = "management" | "calculation" | "member-detail" | "batch-detail"
@@ -179,19 +179,15 @@ const PAYMENT_TYPE_LABELS = {
 }
 
 const PAYMENT_STATUS_LABELS = {
-  draft: "作成中",
-  calculated: "計算済",
-  confirmed: "確定",
+  draft: "編集中",
+  confirmed: "確定済",
   paid: "支払済",
-  cancelled: "取消",
 }
 
 const PAYMENT_STATUS_COLORS = {
   draft: "bg-gray-100 text-gray-800",
-  calculated: "bg-yellow-100 text-yellow-800",
   confirmed: "bg-blue-100 text-blue-800",
   paid: "bg-green-100 text-green-800",
-  cancelled: "bg-red-100 text-red-800",
 }
 
 export default function Component() {
@@ -302,7 +298,7 @@ export default function Component() {
       id: "pay002",
       name: "2024年度年額報酬",
       type: "annual",
-      status: "calculated",
+      status: "confirmed",
       createdDate: "2024-01-01",
       calculatedDate: "2024-01-02",
       description: "2024年度の年額基本報酬",
@@ -373,6 +369,14 @@ export default function Component() {
   const [payrollCalculations, setPayrollCalculations] = useState<PayrollCalculation[]>([])
   const [isSaving, setIsSaving] = useState(false)
 
+  // 追加: モーダル状態
+  const [detailModalMember, setDetailModalMember] = useState<PaymentDetail | null>(null);
+
+  // 報酬登録モーダル用状態
+  const [isRewardSelectOpen, setIsRewardSelectOpen] = useState(false);
+  const [rewardSelectFilter, setRewardSelectFilter] = useState({ type: 'all', dateFrom: '', dateTo: '' });
+  const [rewardSelectChecked, setRewardSelectChecked] = useState<string[]>([]);
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("ja-JP", {
       style: "currency",
@@ -441,7 +445,7 @@ export default function Component() {
   const updatePaymentBatchStatus = (batchId: string, status: PaymentStatus) => {
     const updateData: Partial<PaymentBatch> = { status }
 
-    if (status === "calculated") {
+    if (status === "draft") {
       updateData.calculatedDate = new Date().toISOString().split("T")[0]
     } else if (status === "confirmed") {
       updateData.confirmedDate = new Date().toISOString().split("T")[0]
@@ -716,12 +720,12 @@ export default function Component() {
         batches.map((batch) =>
           batch.id === selectedBatch.id
             ? {
-                ...batch,
-                totalAmount,
-                memberCount,
-                status: "calculated" as PaymentStatus,
-                calculatedDate: new Date().toISOString().split("T")[0],
-              }
+              ...batch,
+              totalAmount,
+              memberCount,
+              status: "calculated" as PaymentStatus,
+              calculatedDate: new Date().toISOString().split("T")[0],
+            }
             : batch,
         ),
       )
@@ -739,7 +743,7 @@ export default function Component() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "calculated")}
+              onClick={() => updatePaymentBatchStatus(batch.id, "draft")}
               className="bg-transparent"
             >
               計算実行
@@ -747,31 +751,10 @@ export default function Component() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "cancelled")}
+              onClick={() => deleteBatch(batch.id)}
               className="bg-transparent text-red-600 hover:text-red-700"
             >
               取消
-            </Button>
-          </div>
-        )
-      case "calculated":
-        return (
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "confirmed")}
-              className="bg-transparent"
-            >
-              確定
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "draft")}
-              className="bg-transparent"
-            >
-              編集に戻す
             </Button>
           </div>
         )
@@ -789,7 +772,7 @@ export default function Component() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => updatePaymentBatchStatus(batch.id, "calculated")}
+              onClick={() => updatePaymentBatchStatus(batch.id, "draft")}
               className="bg-transparent"
             >
               確定解除
@@ -798,8 +781,6 @@ export default function Component() {
         )
       case "paid":
         return <Badge className="bg-green-100 text-green-800">支払済</Badge>
-      case "cancelled":
-        return <Badge className="bg-red-100 text-red-800">取消済</Badge>
       default:
         return null
     }
@@ -825,12 +806,33 @@ export default function Component() {
     }
   }, [selectedBatch, members])
 
-  // 支払いバッチ詳細画面を追加（団員個人の明細閲覧ページの前に）
+  // サマリー・フィルタ・もっと見る用の状態
+  const [batchFilter, setBatchFilter] = useState<PaymentStatus | "all">("all")
+  const [visibleBatchCount, setVisibleBatchCount] = useState(5)
+
+  // サマリー用集計
+  const summary = {
+    total: paymentBatches.length,
+    draft: paymentBatches.filter((b) => b.status === "draft").length,
+    confirmed: paymentBatches.filter((b) => b.status === "confirmed").length,
+    paid: paymentBatches.filter((b) => b.status === "paid").length,
+  }
+
+  // フィルタ適用後のバッチ
+  const filteredBatches = batchFilter === "all" ? paymentBatches : paymentBatches.filter((b) => b.status === batchFilter)
+  const visibleBatches = filteredBatches.slice(0, visibleBatchCount)
+
+  // バッチ詳細画面
   if (currentPage === "batch-detail" && selectedBatchForDetail) {
-    const batchDetails = getBatchPaymentDetails(selectedBatchForDetail.id)
+    const batch = selectedBatchForDetail;
+    const batchDetails = getBatchPaymentDetails(batch.id);
+    const isDraft = batch.status === "draft";
+    const isConfirmed = batch.status === "confirmed";
+    const isPaid = batch.status === "paid";
 
     return (
       <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* ヘッダー */}
         <div className="flex items-center justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-4">
@@ -840,30 +842,34 @@ export default function Component() {
               </Button>
               <h1 className="text-2xl font-bold flex items-center gap-2">
                 <FileText className="h-6 w-6 text-blue-600" />
-                支払いバッチ詳細 - {selectedBatchForDetail.name}
+                支払いバッチ詳細 - {batch.name}
               </h1>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">{PAYMENT_TYPE_LABELS[selectedBatchForDetail.type]}</Badge>
-              <Badge className={PAYMENT_STATUS_COLORS[selectedBatchForDetail.status]}>
-                {PAYMENT_STATUS_LABELS[selectedBatchForDetail.status]}
-              </Badge>
-              <span className="text-muted-foreground">{selectedBatchForDetail.description}</span>
+              <Badge variant="outline">{PAYMENT_TYPE_LABELS[batch.type]}</Badge>
+              <Badge className={PAYMENT_STATUS_COLORS[batch.status]}>{PAYMENT_STATUS_LABELS[batch.status]}</Badge>
+              <span className="text-muted-foreground">{batch.description}</span>
             </div>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => openCalculation(selectedBatchForDetail)}
-              className="bg-transparent"
-            >
-              <Calculator className="h-4 w-4 mr-2" />
-              給与計算
-            </Button>
+            {/* 一括明細出力・PDF出力ボタン */}
             <Button variant="outline" className="bg-transparent">
               <Download className="h-4 w-4 mr-2" />
               一括出力
             </Button>
+            {/* ステータスごとの操作ボタン */}
+            {isDraft && (
+              <>
+                <Button variant="outline" onClick={() => updatePaymentBatchStatus(batch.id, "confirmed")}>確定する</Button>
+                <Button variant="outline" onClick={() => deleteBatch(batch.id)} className="text-red-600">削除</Button>
+              </>
+            )}
+            {isConfirmed && (
+              <Button variant="outline" onClick={() => updatePaymentBatchStatus(batch.id, "paid")} className="text-green-600">支払済みにする</Button>
+            )}
+            {isConfirmed && (
+              <Button variant="outline" onClick={() => updatePaymentBatchStatus(batch.id, "draft")} className="text-gray-600">編集に戻す</Button>
+            )}
           </div>
         </div>
 
@@ -876,283 +882,285 @@ export default function Component() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">作成日</p>
-                <p className="font-medium">{selectedBatchForDetail.createdDate}</p>
+                <p className="font-medium">{batch.createdDate}</p>
               </div>
-              {selectedBatchForDetail.calculatedDate && (
+              {batch.calculatedDate && (
                 <div>
                   <p className="text-sm text-muted-foreground">計算日</p>
-                  <p className="font-medium">{selectedBatchForDetail.calculatedDate}</p>
+                  <p className="font-medium">{batch.calculatedDate}</p>
                 </div>
               )}
-              {selectedBatchForDetail.paymentDate && (
+              {batch.paymentDate && (
                 <div>
                   <p className="text-sm text-muted-foreground">支払日</p>
-                  <p className="font-medium">{selectedBatchForDetail.paymentDate}</p>
+                  <p className="font-medium">{batch.paymentDate}</p>
                 </div>
               )}
               <div>
                 <p className="text-sm text-muted-foreground">対象者数</p>
-                <p className="font-medium">{selectedBatchForDetail.memberCount}名</p>
+                <p className="font-medium">{batch.memberCount}名</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">総支給額</p>
-                <p className="font-medium text-lg">{formatCurrency(selectedBatchForDetail.totalAmount)}</p>
+                <p className="font-medium text-lg">{formatCurrency(batch.totalAmount)}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* 統計情報 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">支給対象者</p>
-              <p className="text-2xl font-bold text-blue-600">{batchDetails.length}名</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">総支給額</p>
-              <p className="text-2xl font-bold text-green-600">
-                {formatCurrency(batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0))}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">平均支給額</p>
-              <p className="text-2xl font-bold text-orange-600">
-                {batchDetails.length > 0
-                  ? formatCurrency(
-                      batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0) / batchDetails.length,
-                    )
-                  : formatCurrency(0)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">支払い種別</p>
-              <p className="text-2xl font-bold text-purple-600">{PAYMENT_TYPE_LABELS[selectedBatchForDetail.type]}</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* 団員明細一覧 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-green-600" />
-              団員明細一覧
-            </CardTitle>
-            <CardDescription>このバッチで支払いを行った団員の明細一覧</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {batchDetails.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">このバッチには支払い明細がありません</p>
-                <p className="text-sm text-muted-foreground">給与計算を実行して明細を作成してください</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {batchDetails.map((detail) => (
-                  <Card key={detail.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                    <CardContent className="p-4" onClick={() => openMemberDetail(detail.memberId)}>
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold">{detail.memberName}</h3>
-                            <Badge>{detail.rank}</Badge>
+        {/* タブ構成 */}
+        <Tabs defaultValue="calculation" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="calculation">報酬計算</TabsTrigger>
+            <TabsTrigger value="summary">報酬集計</TabsTrigger>
+          </TabsList>
+          {/* 報酬計算タブ */}
+          <TabsContent value="calculation" className="space-y-6">
+            {!selectedBatch ? null : (
+              <>
+                {/* 報酬登録ボタン */}
+                <div className="flex justify-end mb-2">
+                  <Button variant="outline" onClick={() => setIsRewardSelectOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />報酬登録
+                  </Button>
+                </div>
+                {/* 報酬登録モーダル */}
+                <Dialog open={isRewardSelectOpen} onOpenChange={setIsRewardSelectOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>報酬選択</DialogTitle>
+                    </DialogHeader>
+                    {selectedBatch.type === "dispatch" ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <Label>活動種別</Label>
+                            <Select value={rewardSelectFilter.type} onValueChange={v => setRewardSelectFilter(f => ({ ...f, type: v }))}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">すべて</SelectItem>
+                                <SelectItem value="fire">火災出動</SelectItem>
+                                <SelectItem value="rescue">救助出動</SelectItem>
+                                <SelectItem value="emergency">救急支援</SelectItem>
+                                <SelectItem value="training">訓練</SelectItem>
+                                <SelectItem value="patrol">警戒巡視</SelectItem>
+                                <SelectItem value="meeting">会議・点検</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">基本額</p>
-                              <p className="font-medium">{formatCurrency(detail.breakdown.baseAmount)}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">手当合計</p>
-                              <p className="font-medium">
-                                {formatCurrency(detail.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0))}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">控除合計</p>
-                              <p className="font-medium">
-                                {formatCurrency(detail.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">支給額</p>
-                              <p className="font-medium text-lg text-blue-600">{formatCurrency(detail.totalAmount)}</p>
-                            </div>
+                          <div>
+                            <Label>期間（開始）</Label>
+                            <Input type="date" value={rewardSelectFilter.dateFrom} onChange={e => setRewardSelectFilter(f => ({ ...f, dateFrom: e.target.value }))} />
                           </div>
-
-                          {/* 出動詳細（出動報酬の場合のみ） */}
-                          {selectedBatchForDetail.type === "dispatch" && detail.breakdown.incidents && (
-                            <div className="mt-3">
-                              <p className="text-sm font-medium text-muted-foreground mb-1">出動詳細:</p>
-                              <div className="flex flex-wrap gap-1">
-                                {detail.breakdown.incidents.map((incident, index) => (
-                                  <Badge key={index} variant="secondary" className="text-xs">
-                                    {incident.name} ({incident.hours}h)
-                                  </Badge>
+                          <div>
+                            <Label>期間（終了）</Label>
+                            <Input type="date" value={rewardSelectFilter.dateTo} onChange={e => setRewardSelectFilter(f => ({ ...f, dateTo: e.target.value }))} />
+                          </div>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto border rounded p-2">
+                          {incidents
+                            .filter(i => (rewardSelectFilter.type === 'all' || i.type === rewardSelectFilter.type))
+                            .filter(i => (!rewardSelectFilter.dateFrom || i.date >= rewardSelectFilter.dateFrom))
+                            .filter(i => (!rewardSelectFilter.dateTo || i.date <= rewardSelectFilter.dateTo))
+                            .map(i => (
+                              <div key={i.id} className="flex items-center gap-2 py-1">
+                                <Checkbox
+                                  checked={rewardSelectChecked.includes(i.id)}
+                                  onCheckedChange={checked => setRewardSelectChecked(checked ? [...rewardSelectChecked, i.id] : rewardSelectChecked.filter(id => id !== i.id))}
+                                />
+                                <span>{i.name}（{INCIDENT_TYPES[i.type].name}）{i.date}</span>
+                              </div>
+                            ))}
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button onClick={() => {
+                            setSelectedIncidents([...new Set([...selectedIncidents, ...rewardSelectChecked])]);
+                            setIsRewardSelectOpen(false);
+                            setRewardSelectChecked([]);
+                          }}>追加</Button>
+                          <Button variant="outline" onClick={() => setIsRewardSelectOpen(false)}>キャンセル</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <Label>期間（開始）</Label>
+                            <Input type="date" value={rewardSelectFilter.dateFrom} onChange={e => setRewardSelectFilter(f => ({ ...f, dateFrom: e.target.value }))} />
+                          </div>
+                          <div>
+                            <Label>期間（終了）</Label>
+                            <Input type="date" value={rewardSelectFilter.dateTo} onChange={e => setRewardSelectFilter(f => ({ ...f, dateTo: e.target.value }))} />
+                          </div>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto border rounded p-2">
+                          {members.map(m => (
+                            <div key={m.id} className="flex items-center gap-2 py-1">
+                              <Checkbox
+                                checked={rewardSelectChecked.includes(m.id)}
+                                onCheckedChange={checked => setRewardSelectChecked(checked ? [...rewardSelectChecked, m.id] : rewardSelectChecked.filter(id => id !== m.id))}
+                              />
+                              <span>{m.name}（{RANKS[m.rank].name}）</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button onClick={() => {
+                            setSelectedMembers([...new Set([...selectedMembers, ...rewardSelectChecked])]);
+                            setIsRewardSelectOpen(false);
+                            setRewardSelectChecked([]);
+                          }}>追加</Button>
+                          <Button variant="outline" onClick={() => setIsRewardSelectOpen(false)}>キャンセル</Button>
+                        </div>
+                      </div>
+                    )}
+                  </DialogContent>
+                </Dialog>
+                {/* 報酬計算一覧（編集不可制御） */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>報酬計算一覧</CardTitle>
+                    <CardDescription>支払い対象の明細行を一覧表示します</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {/* 明細テーブル（isDraft以外は編集不可） */}
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>団員名</TableHead>
+                            <TableHead>事案名</TableHead>
+                            <TableHead>事案種別</TableHead>
+                            <TableHead>活動時間</TableHead>
+                            <TableHead>報酬額</TableHead>
+                            <TableHead>源泉徴収額</TableHead>
+                            <TableHead>その他控除額</TableHead>
+                            <TableHead>振込額</TableHead>
+                            <TableHead>備考</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {/* ここは既存ロジックを流用し、InputのreadOnly/disabledを!isDraftで制御 */}
+                          {/* 例: <Input ... readOnly={!isDraft} disabled={!isDraft} /> */}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+          {/* 報酬集計タブ */}
+          <TabsContent value="summary" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>報酬集計</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* 全体サマリー */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">対象者</p>
+                    <p className="text-2xl font-bold">{batchDetails.length}名</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">総支給額</p>
+                    <p className="text-2xl font-bold">{formatCurrency(batchDetails.reduce((sum, d) => sum + d.totalAmount, 0))}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">平均支給額</p>
+                    <p className="text-2xl font-bold">{batchDetails.length > 0 ? formatCurrency(batchDetails.reduce((sum, d) => sum + d.totalAmount, 0) / batchDetails.length) : formatCurrency(0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">報酬種別</p>
+                    <p className="text-2xl font-bold">{PAYMENT_TYPE_LABELS[batch.type]}</p>
+                  </div>
+                </div>
+                {/* 団員サマリー一覧 */}
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>団員名</TableHead>
+                        <TableHead>階級</TableHead>
+                        <TableHead>報酬額</TableHead>
+                        <TableHead>源泉徴収額</TableHead>
+                        <TableHead>その他控除額</TableHead>
+                        <TableHead>振込額</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {batchDetails.map((detail) => (
+                        <TableRow key={detail.id} className="cursor-pointer hover:bg-gray-50" onClick={() => setDetailModalMember(detail)}>
+                          <TableCell>{detail.memberName}</TableCell>
+                          <TableCell>{detail.rank}</TableCell>
+                          <TableCell>{formatCurrency(detail.totalAmount)}</TableCell>
+                          <TableCell>{formatCurrency(detail.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}</TableCell>
+                          <TableCell>-</TableCell>
+                          <TableCell>{formatCurrency(detail.totalAmount - detail.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {/* 明細モーダル */}
+                <Dialog open={!!detailModalMember} onOpenChange={() => setDetailModalMember(null)}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>団員報酬明細</DialogTitle>
+                    </DialogHeader>
+                    {detailModalMember && (
+                      <div className="space-y-4">
+                        <div>
+                          <p className="font-bold text-lg">{detailModalMember.memberName}（{detailModalMember.rank}）</p>
+                          <p className="text-sm text-muted-foreground">支払い名: {batch.name}</p>
+                          <p className="text-sm text-muted-foreground">説明: {batch.description}</p>
+                          <p className="text-sm text-muted-foreground">支払い予定日: {batch.paymentDate || '-'}</p>
+                          <p className="text-sm text-muted-foreground">合計振込額: {formatCurrency(detailModalMember.totalAmount)}</p>
+                        </div>
+                        <div>
+                          <h4 className="font-semibold mb-2">明細内訳</h4>
+                          <div className="space-y-1">
+                            {detailModalMember.breakdown.incidents && detailModalMember.breakdown.incidents.map((inc, idx) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span>{inc.name}（{inc.hours}時間）</span>
+                                <span>{formatCurrency(inc.amount)}</span>
+                              </div>
+                            ))}
+                            {detailModalMember.breakdown.allowances.length > 0 && (
+                              <div>
+                                <span>手当:</span>
+                                {detailModalMember.breakdown.allowances.map((a, idx) => (
+                                  <span key={idx} className="ml-2">{a.name} {formatCurrency(a.amount)}</span>
                                 ))}
                               </div>
-                            </div>
-                          )}
+                            )}
+                            {detailModalMember.breakdown.deductions.length > 0 && (
+                              <div>
+                                <span>控除:</span>
+                                {detailModalMember.breakdown.deductions.map((d, idx) => (
+                                  <span key={idx} className="ml-2">{d.name} {formatCurrency(d.amount)}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <Button variant="outline" size="sm" className="bg-transparent">
-                            <Receipt className="h-4 w-4 mr-2" />
-                            詳細を見る
+                        <div className="flex gap-2 mt-4">
+                          <Button className="flex-1">
+                            <FileText className="h-4 w-4 mr-2" />
+                            明細を印刷/PDF出力
                           </Button>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // 団員個人の明細閲覧ページ
-  if (currentPage === "member-detail" && selectedMemberId) {
-    const member = members.find((m) => m.id === selectedMemberId)
-    const memberPayments = getMemberPaymentHistory(selectedMemberId)
-
-    return (
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center gap-4">
-              <Button variant="outline" size="sm" onClick={closeMemberDetail} className="bg-transparent">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                一覧に戻る
-              </Button>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <Receipt className="h-6 w-6 text-green-600" />
-                報酬明細 - {member?.name}
-              </h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge>{member ? RANKS[member.rank].name : ""}</Badge>
-              <span className="text-muted-foreground">勤続年数: {member?.yearsOfService}年</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">今年度支給総額</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {formatCurrency(memberPayments.reduce((sum, payment) => sum + payment.totalAmount, 0))}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">支給回数</p>
-              <p className="text-2xl font-bold text-green-600">{memberPayments.length}回</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">最新支給日</p>
-              <p className="text-2xl font-bold text-orange-600">
-                {paymentBatches.find((b) => b.id === memberPayments[0]?.batchId)?.paymentDate || "未支給"}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-4">
-          {memberPayments.map((payment) => {
-            const batch = paymentBatches.find((b) => b.id === payment.batchId)
-            return (
-              <Card key={payment.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        {batch?.name}
-                        <Badge variant="outline">{PAYMENT_TYPE_LABELS[batch?.type || "dispatch"]}</Badge>
-                      </CardTitle>
-                      <CardDescription>
-                        支給日: {batch?.paymentDate || "未支給"} | 総額: {formatCurrency(payment.totalAmount)}
-                      </CardDescription>
-                    </div>
-                    <Badge className={PAYMENT_STATUS_COLORS[batch?.status || "draft"]}>
-                      {PAYMENT_STATUS_LABELS[batch?.status || "draft"]}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">基本額</p>
-                        <p className="font-semibold">{formatCurrency(payment.breakdown.baseAmount)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">手当合計</p>
-                        <p className="font-semibold">
-                          {formatCurrency(payment.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0))}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">控除合計</p>
-                        <p className="font-semibold">
-                          {formatCurrency(payment.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">支給額</p>
-                        <p className="font-semibold text-lg">{formatCurrency(payment.totalAmount)}</p>
-                      </div>
-                    </div>
-
-                    {payment.breakdown.allowances.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold mb-2">手当詳細</h4>
-                        <div className="space-y-1">
-                          {payment.breakdown.allowances.map((allowance, index) => (
-                            <div key={index} className="flex justify-between text-sm">
-                              <span>{allowance.name}</span>
-                              <span>{formatCurrency(allowance.amount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
                     )}
-
-                    {payment.breakdown.incidents && payment.breakdown.incidents.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold mb-2">出動詳細</h4>
-                        <div className="space-y-1">
-                          {payment.breakdown.incidents.map((incident, index) => (
-                            <div key={index} className="flex justify-between text-sm">
-                              <span>
-                                {incident.name} ({incident.hours}時間)
-                              </span>
-                              <span>{formatCurrency(incident.amount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                  </DialogContent>
+                </Dialog>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
-    )
+    );
   }
 
   // 支払い管理ページ
@@ -1288,14 +1296,14 @@ export default function Component() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {paymentBatches.length === 0 ? (
+              {visibleBatches.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground">支払いバッチがありません</p>
                   <p className="text-sm text-muted-foreground">「新規支払い作成」ボタンから作成してください</p>
                 </div>
               ) : (
-                paymentBatches.map((batch) => (
-                  <Card key={batch.id} className="border-l-4 border-l-blue-500">
+                visibleBatches.map((batch) => (
+                  <Card key={batch.id} className="border-l-4 border-l-blue-500 cursor-pointer" onClick={() => openBatchDetail(batch)}>
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between">
                         <div className="space-y-3 flex-1">
@@ -1306,7 +1314,7 @@ export default function Component() {
                               {PAYMENT_STATUS_LABELS[batch.status]}
                             </Badge>
                           </div>
-                          <p className="text-muted-foreground">{batch.description}</p>
+                          <p className="text-muted-foreground line-clamp-2">{batch.description}</p>
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                             <div>
                               <p className="text-muted-foreground">作成日</p>
@@ -1335,80 +1343,53 @@ export default function Component() {
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 ml-4">
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openCalculation(batch)}
-                              className="bg-transparent"
-                            >
-                              <Calculator className="h-4 w-4 mr-1" />
-                              給与計算
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openBatchDetail(batch)}
-                              className="bg-transparent"
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              詳細
-                            </Button>
-                          </div>
-                          <div className="flex gap-2">
-                            {batch.status !== "cancelled" && batch.status !== "paid" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => deleteBatch(batch.id)}
-                                className="bg-transparent text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                削除
-                              </Button>
-                            )}
-                          </div>
-                          <div className="mt-2">{getStatusActions(batch)}</div>
+                          {/* 操作ボタンは詳細画面で表示 */}
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 ))
               )}
+              {/* もっと見るボタン */}
+              {visibleBatchCount < filteredBatches.length && (
+                <div className="flex justify-center">
+                  <Button variant="outline" onClick={() => setVisibleBatchCount((c) => c + 5)}>
+                    もっと見る
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* 統計情報 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
+        {/* サマリー・フィルタ */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <Card onClick={() => setBatchFilter("all")}
+            className={batchFilter === "all" ? "ring-2 ring-blue-400" : "cursor-pointer"}>
             <CardContent className="p-4 text-center">
               <p className="text-sm text-muted-foreground">総支払いバッチ数</p>
-              <p className="text-2xl font-bold text-blue-600">{paymentBatches.length}</p>
+              <p className="text-2xl font-bold text-blue-600">{summary.total}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card onClick={() => setBatchFilter("draft")}
+            className={batchFilter === "draft" ? "ring-2 ring-gray-400" : "cursor-pointer"}>
             <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">作成中</p>
-              <p className="text-2xl font-bold text-gray-600">
-                {paymentBatches.filter((b) => b.status === "draft").length}
-              </p>
+              <p className="text-sm text-muted-foreground">編集中</p>
+              <p className="text-2xl font-bold text-gray-600">{summary.draft}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card onClick={() => setBatchFilter("confirmed")}
+            className={batchFilter === "confirmed" ? "ring-2 ring-blue-400" : "cursor-pointer"}>
             <CardContent className="p-4 text-center">
               <p className="text-sm text-muted-foreground">確定済</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {paymentBatches.filter((b) => b.status === "confirmed").length}
-              </p>
+              <p className="text-2xl font-bold text-blue-600">{summary.confirmed}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card onClick={() => setBatchFilter("paid")}
+            className={batchFilter === "paid" ? "ring-2 ring-green-400" : "cursor-pointer"}>
             <CardContent className="p-4 text-center">
               <p className="text-sm text-muted-foreground">支払済</p>
-              <p className="text-2xl font-bold text-green-600">
-                {paymentBatches.filter((b) => b.status === "paid").length}
-              </p>
+              <p className="text-2xl font-bold text-green-600">{summary.paid}</p>
             </CardContent>
           </Card>
         </div>
@@ -1702,192 +1683,154 @@ export default function Component() {
                       <TableBody>
                         {selectedBatch.type === "annual"
                           ? selectedMembers.map((memberId) => {
-                              const member = members.find((m) => m.id === memberId)
-                              const record = getAnnualPaymentRecord(memberId)
-                              if (!member) return null
+                            const member = members.find((m) => m.id === memberId)
+                            const record = getAnnualPaymentRecord(memberId)
+                            if (!member) return null
 
-                              const baseAmount = record?.baseAmount || RANKS[member.rank].annualBase
-                              const serviceYearBonus = record?.serviceYearBonus || member.yearsOfService * 2000
-                              const specialAllowance = record?.specialAllowance || 0
-                              const totalReward = baseAmount + serviceYearBonus + specialAllowance
-                              const withholdingTax = Math.floor(totalReward * 0.1021)
-                              const otherDeductions = 0
+                            const baseAmount = record?.baseAmount || RANKS[member.rank].annualBase
+                            const serviceYearBonus = record?.serviceYearBonus || member.yearsOfService * 2000
+                            const specialAllowance = record?.specialAllowance || 0
+                            const totalReward = baseAmount + serviceYearBonus + specialAllowance
+                            const withholdingTax = Math.floor(totalReward * 0.1021)
+                            const otherDeductions = 0
+                            const transferAmount = totalReward - withholdingTax - otherDeductions
+                            const isDraft = selectedBatch.status === "draft"
+
+                            return (
+                              <TableRow key={memberId}>
+                                <TableCell className="font-medium">{member.name}</TableCell>
+                                <TableCell>年額報酬</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">年額報酬</Badge>
+                                </TableCell>
+                                <TableCell>-</TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={totalReward}
+                                    readOnly={!isDraft}
+                                    disabled={!isDraft}
+                                    className="w-32"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input type="number" value={withholdingTax} className="w-32" readOnly disabled />
+                                </TableCell>
+                                <TableCell>
+                                  <Input type="number" value={otherDeductions} className="w-32" readOnly disabled />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={transferAmount}
+                                    readOnly={!isDraft}
+                                    disabled={!isDraft}
+                                    className="w-32 font-bold"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    value={record?.notes || ""}
+                                    onChange={(e) => updateAnnualPaymentRecord(memberId, "notes", e.target.value)}
+                                    readOnly={!isDraft}
+                                    disabled={!isDraft}
+                                    className="w-32"
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })
+                          : selectedMembers.map((memberId) =>
+                            selectedIncidents.map((incidentId) => {
+                              const member = members.find((m) => m.id === memberId)
+                              const incident = incidents.find((i) => i.id === incidentId)
+                              const record = getActivityRecord(memberId, incidentId)
+
+                              if (!member || !incident) return null
+
+                              const hours = record?.participationHours || 0
+                              const incidentType = INCIDENT_TYPES[incident.type]
+                              const rankMultiplier = RANKS[member.rank].multiplier
+                              const baseReward = incidentType.baseRate * rankMultiplier * hours
+                              const riskReward =
+                                baseReward * (incidentType.riskMultiplier - 1) * incident.riskLevel * 0.1
+                              const totalReward = baseReward + riskReward
+                              const withholdingTax = record?.withholdingTax || Math.floor(totalReward * 0.1021)
+                              const otherDeductions = record?.otherDeductions || 0
                               const transferAmount = totalReward - withholdingTax - otherDeductions
+                              const isDraft = selectedBatch.status === "draft"
 
                               return (
-                                <TableRow key={memberId}>
+                                <TableRow key={`${memberId}-${incidentId}`}>
                                   <TableCell className="font-medium">{member.name}</TableCell>
-                                  <TableCell>年額報酬</TableCell>
+                                  <TableCell>{incident.name}</TableCell>
                                   <TableCell>
-                                    <Badge variant="outline">年額報酬</Badge>
+                                    <Badge variant="outline">{INCIDENT_TYPES[incident.type].name}</Badge>
                                   </TableCell>
-                                  <TableCell>-</TableCell>
                                   <TableCell>
                                     <Input
                                       type="number"
-                                      value={record?.rewardAmount || totalReward}
-                                      onChange={(e) =>
-                                        updateActivityRecord(
-                                          memberId,
-                                          "annual",
-                                          "rewardAmount",
-                                          Number.parseInt(e.target.value) || 0,
-                                        )
-                                      }
+                                      min="0"
+                                      max={incident.duration}
+                                      step="0.5"
+                                      value={hours}
+                                      onChange={(e) => isDraft && updateActivityRecord(memberId, incidentId, "participationHours", Number.parseFloat(e.target.value) || 0)}
+                                      readOnly={!isDraft}
+                                      disabled={!isDraft}
+                                      className="w-20"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      value={totalReward}
+                                      readOnly={!isDraft}
+                                      disabled={!isDraft}
                                       className="w-32"
                                     />
                                   </TableCell>
                                   <TableCell>
-                                    <Input type="number" value={withholdingTax} className="w-32" readOnly />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input type="number" value={otherDeductions} className="w-32" />
+                                    <Input
+                                      type="number"
+                                      value={withholdingTax}
+                                      onChange={(e) => isDraft && updateActivityRecord(memberId, incidentId, "withholdingTax", Number.parseInt(e.target.value) || 0)}
+                                      readOnly={!isDraft}
+                                      disabled={!isDraft}
+                                      className="w-32"
+                                    />
                                   </TableCell>
                                   <TableCell>
                                     <Input
                                       type="number"
-                                      value={record?.transferAmount || transferAmount}
-                                      onChange={(e) =>
-                                        updateActivityRecord(
-                                          memberId,
-                                          "transferAmount",
-                                          Number.parseInt(e.target.value) || 0,
-                                        )
-                                      }
+                                      value={otherDeductions}
+                                      onChange={(e) => isDraft && updateActivityRecord(memberId, incidentId, "otherDeductions", Number.parseInt(e.target.value) || 0)}
+                                      readOnly={!isDraft}
+                                      disabled={!isDraft}
+                                      className="w-32"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      value={transferAmount}
+                                      readOnly={!isDraft}
+                                      disabled={!isDraft}
                                       className="w-32 font-bold"
                                     />
                                   </TableCell>
                                   <TableCell>
                                     <Input
                                       value={record?.notes || ""}
-                                      onChange={(e) => updateAnnualPaymentRecord(memberId, "notes", e.target.value)}
-                                      placeholder="備考"
+                                      onChange={(e) => isDraft && updateActivityRecord(memberId, incidentId, "notes", e.target.value)}
+                                      readOnly={!isDraft}
+                                      disabled={!isDraft}
                                       className="w-32"
                                     />
                                   </TableCell>
                                 </TableRow>
                               )
-                            })
-                          : selectedMembers.map((memberId) =>
-                              selectedIncidents.map((incidentId) => {
-                                const member = members.find((m) => m.id === memberId)
-                                const incident = incidents.find((i) => i.id === incidentId)
-                                const record = getActivityRecord(memberId, incidentId)
-
-                                if (!member || !incident) return null
-
-                                const hours = record?.participationHours || 0
-                                const incidentType = INCIDENT_TYPES[incident.type]
-                                const rankMultiplier = RANKS[member.rank].multiplier
-                                const baseReward = incidentType.baseRate * rankMultiplier * hours
-                                const riskReward =
-                                  baseReward * (incidentType.riskMultiplier - 1) * incident.riskLevel * 0.1
-                                const totalReward = baseReward + riskReward
-                                const withholdingTax = record?.withholdingTax || Math.floor(totalReward * 0.1021)
-                                const otherDeductions = record?.otherDeductions || 0
-                                const transferAmount = totalReward - withholdingTax - otherDeductions
-
-                                return (
-                                  <TableRow key={`${memberId}-${incidentId}`}>
-                                    <TableCell className="font-medium">{member.name}</TableCell>
-                                    <TableCell>{incident.name}</TableCell>
-                                    <TableCell>
-                                      <Badge variant="outline">{INCIDENT_TYPES[incident.type].name}</Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        max={incident.duration}
-                                        step="0.5"
-                                        value={hours}
-                                        onChange={(e) => {
-                                          const newHours = Number.parseFloat(e.target.value) || 0
-                                          updateActivityRecord(memberId, incidentId, "participationHours", newHours)
-                                          // 時間変更時に報酬額も自動更新
-                                          const newBaseReward = incidentType.baseRate * rankMultiplier * newHours
-                                          const newRiskReward =
-                                            newBaseReward * (incidentType.riskMultiplier - 1) * incident.riskLevel * 0.1
-                                          const newTotalReward = newBaseReward + newRiskReward
-                                          updateActivityRecord(memberId, incidentId, "rewardAmount", newTotalReward)
-                                        }}
-                                        className="w-20"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        value={record?.rewardAmount || totalReward}
-                                        onChange={(e) =>
-                                          updateActivityRecord(
-                                            memberId,
-                                            incidentId,
-                                            "rewardAmount",
-                                            Number.parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        className="w-32"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        value={withholdingTax}
-                                        onChange={(e) =>
-                                          updateActivityRecord(
-                                            memberId,
-                                            incidentId,
-                                            "withholdingTax",
-                                            Number.parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        className="w-32"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        value={otherDeductions}
-                                        onChange={(e) =>
-                                          updateActivityRecord(
-                                            memberId,
-                                            incidentId,
-                                            "otherDeductions",
-                                            Number.parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        className="w-32"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        value={record?.transferAmount || transferAmount}
-                                        onChange={(e) =>
-                                          updateActivityRecord(
-                                            memberId,
-                                            incidentId,
-                                            "transferAmount",
-                                            Number.parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        className="w-32 font-bold"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        value={record?.notes || ""}
-                                        onChange={(e) =>
-                                          updateActivityRecord(memberId, incidentId, "notes", e.target.value)
-                                        }
-                                        placeholder="備考"
-                                        className="w-32"
-                                      />
-                                    </TableCell>
-                                  </TableRow>
-                                )
-                              }),
-                            )}
+                            }),
+                          )}
                       </TableBody>
                     </Table>
                   </div>
@@ -1944,7 +1887,7 @@ export default function Component() {
                         <p className="text-2xl font-bold text-orange-600">
                           {formatCurrency(
                             payrollCalculations.reduce((sum, calc) => sum + calc.totalAmount, 0) /
-                              payrollCalculations.length,
+                            payrollCalculations.length,
                           )}
                         </p>
                       </div>
