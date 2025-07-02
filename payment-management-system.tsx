@@ -48,7 +48,7 @@ type PaymentType = "dispatch" | "annual"
 type PaymentStatus = "editing" | "confirmed" | "paid"
 
 // 現在のページ
-type CurrentPage = "management" | "calculation" | "member-detail" | "batch-detail"
+type CurrentPage = "management" | "calculation" | "member-detail" | "batch-detail" | "reward-selection"
 
 // ユーザー権限
 type UserRole = "admin" | "member"
@@ -544,8 +544,23 @@ export default function Component() {
   }
 
   const closeCalculation = () => {
-    setCurrentPage("management")
+    setCurrentPage("batch-detail")
+    // selectedBatch の情報を selectedBatchForDetail に移す
+    if (selectedBatch) {
+      setSelectedBatchForDetail(selectedBatch)
+    }
     setSelectedBatch(null)
+  }
+
+  // 報酬対象選択画面を開く
+  const openRewardSelection = (batch: PaymentBatch) => {
+    setSelectedBatch(batch)
+    setCurrentPage("reward-selection")
+  }
+
+  // 報酬対象選択画面を閉じる
+  const closeRewardSelection = () => {
+    setCurrentPage("calculation")
   }
 
   const closeMemberDetail = () => {
@@ -818,6 +833,219 @@ export default function Component() {
     }
   }, [selectedBatch, members])
 
+  // 報酬対象選択画面
+  if (currentPage === "reward-selection" && selectedBatch) {
+    return (
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* ヘッダーエリア */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={closeRewardSelection} className="bg-transparent">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                報酬計算に戻る
+              </Button>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <Users className="h-6 w-6 text-blue-600" />
+                報酬対象選択 - {selectedBatch.name}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{PAYMENT_TYPE_LABELS[selectedBatch.type]}</Badge>
+              <Badge className={PAYMENT_STATUS_COLORS[selectedBatch.status]}>
+                {PAYMENT_STATUS_LABELS[selectedBatch.status]}
+              </Badge>
+              <span className="text-muted-foreground">{selectedBatch.description}</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              onClick={closeRewardSelection}
+              disabled={selectedBatch.type === "dispatch" && selectedIncidents.length === 0}
+            >
+              選択完了
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6">
+          {/* 年額報酬の場合の年度選択 */}
+          {selectedBatch.type === "annual" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-purple-600" />
+                  対象年度設定
+                </CardTitle>
+                <CardDescription>年額報酬の対象年度を設定してください</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="targetYear">対象年度</Label>
+                    <Select
+                      value={selectedYear.toString()}
+                      onValueChange={(value) => setSelectedYear(Number.parseInt(value))}
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                          <SelectItem key={year} value={year.toString()}>
+                            {year}年度
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 出動報酬の場合は事案選択のみ */}
+          {selectedBatch.type === "dispatch" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Flame className="h-5 w-5 text-orange-600" />
+                  対象事案選択
+                </CardTitle>
+                <CardDescription>
+                  報酬計算対象とする事案を選択してください
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* 事案検索フィルター */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="incidentSearch">事案名検索</Label>
+                    <Input
+                      id="incidentSearch"
+                      placeholder="事案名で検索..."
+                      className="bg-white"
+                      value={incidentSearchTerm}
+                      onChange={(e) => setIncidentSearchTerm(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="incidentType">事案種別</Label>
+                    <Select value={incidentTypeFilter} onValueChange={setIncidentTypeFilter}>
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="すべて" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">すべて</SelectItem>
+                        <SelectItem value="fire">火災出動</SelectItem>
+                        <SelectItem value="rescue">救助出動</SelectItem>
+                        <SelectItem value="emergency">救急支援</SelectItem>
+                        <SelectItem value="training">訓練</SelectItem>
+                        <SelectItem value="patrol">警戒巡視</SelectItem>
+                        <SelectItem value="meeting">会議・点検</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dateRange">期間</Label>
+                    <Input
+                      id="dateRange"
+                      type="date"
+                      className="bg-white"
+                      value={dateRangeFilter}
+                      onChange={(e) => setDateRangeFilter(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>データ取得</Label>
+                    <Button onClick={fetchIncidents} disabled={isLoadingIncidents} className="w-full">
+                      {isLoadingIncidents ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          取得中...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="h-4 w-4 mr-2" />
+                          事案検索
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* 選択状況表示 */}
+                {selectedIncidents.length > 0 && (
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm font-medium text-blue-800 mb-2">
+                      選択中の事案: {selectedIncidents.length}件
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedIncidents.map((incidentId) => {
+                        const incident = incidents.find(i => i.id === incidentId)
+                        return incident ? (
+                          <Badge key={incidentId} variant="secondary" className="text-xs">
+                            {incident.name}
+                          </Badge>
+                        ) : null
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 事案一覧 */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      {isLoadingIncidents ? "検索中..." : `検索結果: ${incidents.length}件`}
+                    </span>
+                    <Button variant="outline" size="sm" className="bg-transparent">
+                      <Plus className="h-4 w-4 mr-2" />
+                      新規事案登録
+                    </Button>
+                  </div>
+
+                  {isLoadingIncidents ? (
+                    <div className="text-center py-8">
+                      <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-muted-foreground">事案データを取得中...</p>
+                    </div>
+                  ) : (
+                    incidents.map((incident) => (
+                      <div key={incident.id} className="flex items-start space-x-3 p-3 border rounded-lg">
+                        <Checkbox
+                          id={incident.id}
+                          checked={selectedIncidents.includes(incident.id)}
+                          onCheckedChange={(checked) => handleIncidentSelection(incident.id, !!checked)}
+                        />
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor={incident.id} className="font-medium cursor-pointer">
+                              {incident.name}
+                            </Label>
+                            <Badge variant="outline">{INCIDENT_TYPES[incident.type].name}</Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            <p>
+                              日時: {incident.date} ({incident.duration}時間)
+                            </p>
+                            <p>危険度: レベル{incident.riskLevel}</p>
+                            <p>参加者: {incident.participants.length}名</p>
+                            <p>{incident.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // 報酬集計機能画面（旧：支払いバッチ詳細画面）
   if (currentPage === "batch-detail" && selectedBatchForDetail) {
     const batchDetails = getBatchPaymentDetails(selectedBatchForDetail.id)
@@ -1085,6 +1313,16 @@ export default function Component() {
               <Badge>{member ? RANKS[member.rank].name : ""}</Badge>
               <span className="text-muted-foreground">勤続年数: {member?.yearsOfService}年</span>
             </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => alert("明細出力機能は開発中です")}
+              className="bg-transparent"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              明細を出力する
+            </Button>
           </div>
         </div>
 
@@ -1577,18 +1815,292 @@ export default function Component() {
           </div>
         </div>
 
-        <Tabs defaultValue="setup" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="setup">報酬の登録</TabsTrigger>
-            <TabsTrigger value="input">報酬計算一覧</TabsTrigger>
-            <TabsTrigger value="results">計算結果</TabsTrigger>
-          </TabsList>
+        <div className="space-y-6">{/* タブを削除して一画面表示に変更 */}
 
-          {/* 計算設定 */}
-          <TabsContent value="setup" className="space-y-6">
-            <div className="grid grid-cols-1 gap-6">
-              {/* 年額報酬の場合の年度選択 */}
-              {selectedBatch.type === "annual" && (
+          {/* 選択済み報酬対象の表示 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-blue-600" />
+                    選択済み報酬対象
+                  </CardTitle>
+                  <CardDescription>
+                    現在選択されている報酬対象を表示します
+                  </CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  onClick={() => openRewardSelection(selectedBatch)}
+                  className="bg-transparent"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  報酬対象を選択
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* 選択状況の表示 */}
+              {selectedBatch.type === "dispatch" ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    選択中の事案: {selectedIncidents.length}件
+                  </p>
+                  {selectedIncidents.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {selectedIncidents.map((incidentId) => {
+                        const incident = incidents.find(i => i.id === incidentId)
+                        return incident ? (
+                          <Badge key={incidentId} variant="secondary" className="text-xs">
+                            {incident.name}
+                          </Badge>
+                        ) : null
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    対象年度: {selectedYear}年度
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    対象者: {selectedMembers.length}名
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 報酬計算一覧 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calculator className="h-5 w-5 text-green-600" />
+                報酬計算一覧
+              </CardTitle>
+              <CardDescription>
+                {selectedBatch.type === "annual" ? "年額報酬の支給計算を行います" : "出動報酬の支給計算を行います"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {selectedBatch.type === "dispatch" && selectedIncidents.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">報酬対象を選択してから計算を行ってください</p>
+                </div>
+              ) : selectedBatch.type === "annual" && selectedMembers.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">対象年度を設定してから計算を行ってください</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>団員名</TableHead>
+                        {selectedBatch.type === "annual" && <TableHead>年額報酬名</TableHead>}
+                        {selectedBatch.type === "dispatch" && <TableHead>事案名</TableHead>}
+                        {selectedBatch.type === "dispatch" && <TableHead>活動種別</TableHead>}
+                        {selectedBatch.type === "dispatch" && <TableHead>活動時間</TableHead>}
+                        <TableHead>報酬額</TableHead>
+                        <TableHead>源泉徴収額</TableHead>
+                        <TableHead>その他控除額</TableHead>
+                        <TableHead>振込額</TableHead>
+                        <TableHead>備考</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedBatch.type === "annual"
+                        ? selectedMembers.map((memberId) => {
+                            const member = members.find((m) => m.id === memberId)
+                            const record = getAnnualPaymentRecord(memberId)
+                            if (!member) return null
+
+                            const baseAmount = record?.baseAmount || RANKS[member.rank].annualBase
+                            const serviceYearBonus = record?.serviceYearBonus || member.yearsOfService * 2000
+                            const specialAllowance = record?.specialAllowance || 0
+                            const totalReward = baseAmount + serviceYearBonus + specialAllowance
+                            const withholdingTax = Math.floor(totalReward * 0.1021)
+                            const otherDeductions = 0
+                            const transferAmount = totalReward - withholdingTax - otherDeductions
+
+                            return (
+                              <TableRow key={memberId}>
+                                <TableCell className="font-medium">{member.name}</TableCell>
+                                <TableCell>年額報酬</TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={totalReward}
+                                    onChange={(e) =>
+                                      updateAnnualPaymentRecord(
+                                        memberId,
+                                        "baseAmount",
+                                        Number.parseInt(e.target.value) || 0,
+                                      )
+                                    }
+                                    className="w-32"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input type="number" value={withholdingTax} className="w-32" readOnly />
+                                </TableCell>
+                                <TableCell>
+                                  <Input type="number" value={otherDeductions} className="w-32" />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    value={transferAmount}
+                                    className="w-32 font-bold"
+                                    readOnly
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    value={record?.notes || ""}
+                                    onChange={(e) => updateAnnualPaymentRecord(memberId, "notes", e.target.value)}
+                                    placeholder="備考"
+                                    className="w-32"
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })
+                        : selectedMembers.map((memberId) =>
+                            selectedIncidents.map((incidentId) => {
+                              const member = members.find((m) => m.id === memberId)
+                              const incident = incidents.find((i) => i.id === incidentId)
+                              const record = getActivityRecord(memberId, incidentId)
+
+                              if (!member || !incident) return null
+
+                              const hours = record?.participationHours || 0
+                              const incidentType = INCIDENT_TYPES[incident.type]
+                              const rankMultiplier = RANKS[member.rank].multiplier
+                              const baseReward = incidentType.baseRate * rankMultiplier * hours
+                              const riskReward =
+                                baseReward * (incidentType.riskMultiplier - 1) * incident.riskLevel * 0.1
+                              const totalReward = baseReward + riskReward
+                              const withholdingTax = record?.withholdingTax || Math.floor(totalReward * 0.1021)
+                              const otherDeductions = record?.otherDeductions || 0
+                              const transferAmount = totalReward - withholdingTax - otherDeductions
+
+                              return (
+                                <TableRow key={`${memberId}-${incidentId}`}>
+                                  <TableCell className="font-medium">{member.name}</TableCell>
+                                  <TableCell>{incident.name}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">{INCIDENT_TYPES[incident.type].name}</Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max={incident.duration}
+                                      step="0.5"
+                                      value={hours}
+                                      onChange={(e) => {
+                                        const newHours = Number.parseFloat(e.target.value) || 0
+                                        updateActivityRecord(memberId, incidentId, "participationHours", newHours)
+                                        // 時間変更時に報酬額も自動更新
+                                        const newBaseReward = incidentType.baseRate * rankMultiplier * newHours
+                                        const newRiskReward =
+                                          newBaseReward * (incidentType.riskMultiplier - 1) * incident.riskLevel * 0.1
+                                        const newTotalReward = newBaseReward + newRiskReward
+                                        updateActivityRecord(memberId, incidentId, "rewardAmount", newTotalReward)
+                                      }}
+                                      className="w-20"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      value={record?.rewardAmount || totalReward}
+                                      onChange={(e) =>
+                                        updateActivityRecord(
+                                          memberId,
+                                          incidentId,
+                                          "rewardAmount",
+                                          Number.parseInt(e.target.value) || 0,
+                                        )
+                                      }
+                                      className="w-32"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      value={withholdingTax}
+                                      onChange={(e) =>
+                                        updateActivityRecord(
+                                          memberId,
+                                          incidentId,
+                                          "withholdingTax",
+                                          Number.parseInt(e.target.value) || 0,
+                                        )
+                                      }
+                                      className="w-32"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      value={otherDeductions}
+                                      onChange={(e) =>
+                                        updateActivityRecord(
+                                          memberId,
+                                          incidentId,
+                                          "otherDeductions",
+                                          Number.parseInt(e.target.value) || 0,
+                                        )
+                                      }
+                                      className="w-32"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      value={record?.transferAmount || transferAmount}
+                                      onChange={(e) =>
+                                        updateActivityRecord(
+                                          memberId,
+                                          incidentId,
+                                          "transferAmount",
+                                          Number.parseInt(e.target.value) || 0,
+                                        )
+                                      }
+                                      className="w-32 font-bold"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={record?.notes || ""}
+                                      onChange={(e) =>
+                                        updateActivityRecord(memberId, incidentId, "notes", e.target.value)
+                                      }
+                                      placeholder="備考"
+                                      className="w-32"
+                                    />
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            }),
+                          )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  // 団員個人の明細閲覧ページ
+  if (currentPage === "member-detail" && selectedMemberId) {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -1622,499 +2134,7 @@ export default function Component() {
                 </Card>
               )}
 
-              {/* 出動報酬の場合は事案選択のみ */}
-              {selectedBatch.type === "dispatch" && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Flame className="h-5 w-5 text-orange-600" />
-                      対象事案選択
-                    </CardTitle>
-                    <CardDescription>
-                      APIから事案データを取得して、給与計算対象とする事案を選択してください
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* 事案検索フィルター */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-                      <div className="space-y-2">
-                        <Label htmlFor="incidentSearch">事案名検索</Label>
-                        <Input
-                          id="incidentSearch"
-                          placeholder="事案名で検索..."
-                          className="bg-white"
-                          value={incidentSearchTerm}
-                          onChange={(e) => setIncidentSearchTerm(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="incidentType">事案種別</Label>
-                        <Select value={incidentTypeFilter} onValueChange={setIncidentTypeFilter}>
-                          <SelectTrigger className="bg-white">
-                            <SelectValue placeholder="すべて" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">すべて</SelectItem>
-                            <SelectItem value="fire">火災出動</SelectItem>
-                            <SelectItem value="rescue">救助出動</SelectItem>
-                            <SelectItem value="emergency">救急支援</SelectItem>
-                            <SelectItem value="training">訓練</SelectItem>
-                            <SelectItem value="patrol">警戒巡視</SelectItem>
-                            <SelectItem value="meeting">会議・点検</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="dateRange">期間</Label>
-                        <Input
-                          id="dateRange"
-                          type="date"
-                          className="bg-white"
-                          value={dateRangeFilter}
-                          onChange={(e) => setDateRangeFilter(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>データ取得</Label>
-                        <Button onClick={fetchIncidents} disabled={isLoadingIncidents} className="w-full">
-                          {isLoadingIncidents ? (
-                            <>
-                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                              取得中...
-                            </>
-                          ) : (
-                            <>
-                              <Search className="h-4 w-4 mr-2" />
-                              事案検索
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
 
-                    {/* 事案一覧 */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          {isLoadingIncidents ? "検索中..." : `検索結果: ${incidents.length}件`}
-                        </span>
-                        <Button variant="outline" size="sm" className="bg-transparent">
-                          <Plus className="h-4 w-4 mr-2" />
-                          新規事案登録
-                        </Button>
-                      </div>
-
-                      {isLoadingIncidents ? (
-                        <div className="text-center py-8">
-                          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
-                          <p className="text-muted-foreground">事案データを取得中...</p>
-                        </div>
-                      ) : (
-                        incidents.map((incident) => (
-                          <div key={incident.id} className="flex items-start space-x-3 p-3 border rounded-lg">
-                            <Checkbox
-                              id={incident.id}
-                              checked={selectedIncidents.includes(incident.id)}
-                              onCheckedChange={(checked) => handleIncidentSelection(incident.id, !!checked)}
-                            />
-                            <div className="flex-1 space-y-2">
-                              <div className="flex items-center gap-2">
-                                <Label htmlFor={incident.id} className="font-medium cursor-pointer">
-                                  {incident.name}
-                                </Label>
-                                <Badge variant="outline">{INCIDENT_TYPES[incident.type].name}</Badge>
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                <p>
-                                  日時: {incident.date} ({incident.duration}時間)
-                                </p>
-                                <p>危険度: レベル{incident.riskLevel}</p>
-                                <p>参加者: {incident.participants.length}名</p>
-                                <p>{incident.description}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* 支給計算 */}
-          <TabsContent value="input" className="space-y-6">
-            {selectedBatch.type === "dispatch" && selectedIncidents.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-8">
-                  <p className="text-muted-foreground">対象事案を選択してから支給計算を行ってください</p>
-                </CardContent>
-              </Card>
-            ) : selectedBatch.type === "annual" && selectedMembers.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-8">
-                  <p className="text-muted-foreground">対象年度を設定してから支給計算を行ってください</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>支給計算</CardTitle>
-                  <CardDescription>
-                    {selectedBatch.type === "annual" ? "年額報酬の支給計算を行います" : "出動報酬の支給計算を行います"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>団員名</TableHead>
-                          <TableHead>事案名</TableHead>
-                          <TableHead>事案種別</TableHead>
-                          <TableHead>活動時間</TableHead>
-                          <TableHead>報酬額</TableHead>
-                          <TableHead>源泉徴収額</TableHead>
-                          <TableHead>その他控除額</TableHead>
-                          <TableHead>振込額</TableHead>
-                          <TableHead>備考</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedBatch.type === "annual"
-                          ? selectedMembers.map((memberId) => {
-                              const member = members.find((m) => m.id === memberId)
-                              const record = getAnnualPaymentRecord(memberId)
-                              if (!member) return null
-
-                              const baseAmount = record?.baseAmount || RANKS[member.rank].annualBase
-                              const serviceYearBonus = record?.serviceYearBonus || member.yearsOfService * 2000
-                              const specialAllowance = record?.specialAllowance || 0
-                              const totalReward = baseAmount + serviceYearBonus + specialAllowance
-                              const withholdingTax = Math.floor(totalReward * 0.1021)
-                              const otherDeductions = 0
-                              const transferAmount = totalReward - withholdingTax - otherDeductions
-
-                              return (
-                                <TableRow key={memberId}>
-                                  <TableCell className="font-medium">{member.name}</TableCell>
-                                  <TableCell>年額報酬</TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline">年額報酬</Badge>
-                                  </TableCell>
-                                  <TableCell>-</TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={record?.rewardAmount || totalReward}
-                                      onChange={(e) =>
-                                        updateActivityRecord(
-                                          memberId,
-                                          "annual",
-                                          "rewardAmount",
-                                          Number.parseInt(e.target.value) || 0,
-                                        )
-                                      }
-                                      className="w-32"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input type="number" value={withholdingTax} className="w-32" readOnly />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input type="number" value={otherDeductions} className="w-32" />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="number"
-                                      value={record?.transferAmount || transferAmount}
-                                      onChange={(e) =>
-                                        updateActivityRecord(
-                                          memberId,
-                                          "transferAmount",
-                                          Number.parseInt(e.target.value) || 0,
-                                        )
-                                      }
-                                      className="w-32 font-bold"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      value={record?.notes || ""}
-                                      onChange={(e) => updateAnnualPaymentRecord(memberId, "notes", e.target.value)}
-                                      placeholder="備考"
-                                      className="w-32"
-                                    />
-                                  </TableCell>
-                                </TableRow>
-                              )
-                            })
-                          : selectedMembers.map((memberId) =>
-                              selectedIncidents.map((incidentId) => {
-                                const member = members.find((m) => m.id === memberId)
-                                const incident = incidents.find((i) => i.id === incidentId)
-                                const record = getActivityRecord(memberId, incidentId)
-
-                                if (!member || !incident) return null
-
-                                const hours = record?.participationHours || 0
-                                const incidentType = INCIDENT_TYPES[incident.type]
-                                const rankMultiplier = RANKS[member.rank].multiplier
-                                const baseReward = incidentType.baseRate * rankMultiplier * hours
-                                const riskReward =
-                                  baseReward * (incidentType.riskMultiplier - 1) * incident.riskLevel * 0.1
-                                const totalReward = baseReward + riskReward
-                                const withholdingTax = record?.withholdingTax || Math.floor(totalReward * 0.1021)
-                                const otherDeductions = record?.otherDeductions || 0
-                                const transferAmount = totalReward - withholdingTax - otherDeductions
-
-                                return (
-                                  <TableRow key={`${memberId}-${incidentId}`}>
-                                    <TableCell className="font-medium">{member.name}</TableCell>
-                                    <TableCell>{incident.name}</TableCell>
-                                    <TableCell>
-                                      <Badge variant="outline">{INCIDENT_TYPES[incident.type].name}</Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        max={incident.duration}
-                                        step="0.5"
-                                        value={hours}
-                                        onChange={(e) => {
-                                          const newHours = Number.parseFloat(e.target.value) || 0
-                                          updateActivityRecord(memberId, incidentId, "participationHours", newHours)
-                                          // 時間変更時に報酬額も自動更新
-                                          const newBaseReward = incidentType.baseRate * rankMultiplier * newHours
-                                          const newRiskReward =
-                                            newBaseReward * (incidentType.riskMultiplier - 1) * incident.riskLevel * 0.1
-                                          const newTotalReward = newBaseReward + newRiskReward
-                                          updateActivityRecord(memberId, incidentId, "rewardAmount", newTotalReward)
-                                        }}
-                                        className="w-20"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        value={record?.rewardAmount || totalReward}
-                                        onChange={(e) =>
-                                          updateActivityRecord(
-                                            memberId,
-                                            incidentId,
-                                            "rewardAmount",
-                                            Number.parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        className="w-32"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        value={withholdingTax}
-                                        onChange={(e) =>
-                                          updateActivityRecord(
-                                            memberId,
-                                            incidentId,
-                                            "withholdingTax",
-                                            Number.parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        className="w-32"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        value={otherDeductions}
-                                        onChange={(e) =>
-                                          updateActivityRecord(
-                                            memberId,
-                                            incidentId,
-                                            "otherDeductions",
-                                            Number.parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        className="w-32"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="number"
-                                        value={record?.transferAmount || transferAmount}
-                                        onChange={(e) =>
-                                          updateActivityRecord(
-                                            memberId,
-                                            incidentId,
-                                            "transferAmount",
-                                            Number.parseInt(e.target.value) || 0,
-                                          )
-                                        }
-                                        className="w-32 font-bold"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        value={record?.notes || ""}
-                                        onChange={(e) =>
-                                          updateActivityRecord(memberId, incidentId, "notes", e.target.value)
-                                        }
-                                        placeholder="備考"
-                                        className="w-32"
-                                      />
-                                    </TableCell>
-                                  </TableRow>
-                                )
-                              }),
-                            )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* 計算結果 */}
-          <TabsContent value="results" className="space-y-6">
-            {payrollCalculations.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-8">
-                  <p className="text-muted-foreground">計算設定と支給計算を完了すると結果が表示されます</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-6">
-                {/* 集計情報 */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span>計算結果集計</span>
-                      <div className="flex gap-2">
-                        <Button variant="outline" className="bg-transparent">
-                          <FileText className="h-4 w-4 mr-2" />
-                          明細出力
-                        </Button>
-                        <Button variant="outline" className="bg-transparent">
-                          <Download className="h-4 w-4 mr-2" />
-                          CSV出力
-                        </Button>
-                        <Button variant="outline" className="bg-transparent">
-                          <Bell className="h-4 w-4 mr-2" />
-                          支払通知
-                        </Button>
-                      </div>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="text-center p-4 bg-blue-50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">対象者数</p>
-                        <p className="text-2xl font-bold text-blue-600">{payrollCalculations.length}名</p>
-                      </div>
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">総支給額</p>
-                        <p className="text-2xl font-bold text-green-600">
-                          {formatCurrency(payrollCalculations.reduce((sum, calc) => sum + calc.totalAmount, 0))}
-                        </p>
-                      </div>
-                      <div className="text-center p-4 bg-orange-50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">平均支給額</p>
-                        <p className="text-2xl font-bold text-orange-600">
-                          {formatCurrency(
-                            payrollCalculations.reduce((sum, calc) => sum + calc.totalAmount, 0) /
-                              payrollCalculations.length,
-                          )}
-                        </p>
-                      </div>
-                      <div className="text-center p-4 bg-purple-50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">支払い種別</p>
-                        <p className="text-2xl font-bold text-purple-600">{PAYMENT_TYPE_LABELS[selectedBatch.type]}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* 個別計算結果 */}
-                {payrollCalculations.map((calc) => (
-                  <Card key={calc.memberId}>
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span>{calc.memberName}</span>
-                          <Badge>{calc.rank}</Badge>
-                        </div>
-                        <div className="text-2xl font-bold text-blue-600">{formatCurrency(calc.totalAmount)}</div>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {selectedBatch.type === "annual" ? (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">基本年額</p>
-                            <p className="font-semibold">{formatCurrency(calc.details.baseAmount)}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">勤続年数加算</p>
-                            <p className="font-semibold">{formatCurrency(calc.details.serviceYearBonus)}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">特別手当</p>
-                            <p className="font-semibold">{formatCurrency(calc.details.specialAllowance)}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">勤続年数</p>
-                            <p className="font-semibold">{calc.details.yearsOfService}年</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">総活動時間</p>
-                              <p className="font-semibold">{calc.details.totalHours}時間</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">基本手当</p>
-                              <p className="font-semibold">{formatCurrency(calc.details.baseAllowance)}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">危険手当</p>
-                              <p className="font-semibold">{formatCurrency(calc.details.riskAllowance)}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">指揮手当</p>
-                              <p className="font-semibold">{formatCurrency(calc.details.leadershipAllowance)}</p>
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          <div>
-                            <h4 className="font-semibold mb-2">事案別詳細</h4>
-                            <div className="space-y-2">
-                              {calc.details.incidents.map((incident: any, index: number) => (
-                                <div key={index} className="flex justify-between items-center text-sm">
-                                  <span>
-                                    {incident.incidentName} ({incident.hours}時間)
-                                  </span>
-                                  <span className="font-mono">{formatCurrency(incident.pay)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
       </div>
     )
   }
