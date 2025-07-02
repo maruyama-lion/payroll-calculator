@@ -39,6 +39,9 @@ import {
   Bell,
   RefreshCw,
   Search,
+  Target,
+  AlertTriangle,
+  BarChart3,
 } from "lucide-react"
 
 // 支払い種別
@@ -197,8 +200,7 @@ export default function Component() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const [userRole] = useState<UserRole>("admin") // 実際にはログイン情報から取得
 
-  // 支払いバッチ詳細画面用の状態を追加
-  const [selectedBatchForDetail, setSelectedBatchForDetail] = useState<PaymentBatch | null>(null)
+
 
   // APIフェッチ関連の状態
   const [isLoadingIncidents, setIsLoadingIncidents] = useState(false)
@@ -470,13 +472,13 @@ export default function Component() {
 
   // ステータス確定処理
   const handleConfirmStatus = () => {
-    if (selectedBatchForDetail && scheduledPaymentDate) {
-      updatePaymentBatchStatus(selectedBatchForDetail.id, "confirmed", scheduledPaymentDate)
+    if (selectedBatch && scheduledPaymentDate) {
+      updatePaymentBatchStatus(selectedBatch.id, "confirmed", scheduledPaymentDate)
       setIsConfirmingStatus(false)
       setScheduledPaymentDate("")
       // 詳細画面のバッチ情報も更新
-      setSelectedBatchForDetail({
-        ...selectedBatchForDetail,
+      setSelectedBatch({
+        ...selectedBatch,
         status: "confirmed",
         confirmedDate: new Date().toISOString().split("T")[0],
         scheduledPaymentDate: scheduledPaymentDate
@@ -486,10 +488,10 @@ export default function Component() {
 
   // 支払い済み処理
   const handleMarkAsPaid = () => {
-    if (selectedBatchForDetail) {
-      updatePaymentBatchStatus(selectedBatchForDetail.id, "paid")
-      setSelectedBatchForDetail({
-        ...selectedBatchForDetail,
+    if (selectedBatch) {
+      updatePaymentBatchStatus(selectedBatch.id, "paid")
+      setSelectedBatch({
+        ...selectedBatch,
         status: "paid",
         paymentDate: new Date().toISOString().split("T")[0]
       })
@@ -528,14 +530,14 @@ export default function Component() {
 
   // 支払いバッチ詳細を開く関数を追加
   const openBatchDetail = (batch: PaymentBatch) => {
-    setSelectedBatchForDetail(batch)
+    setSelectedBatch(batch)
     setCurrentPage("batch-detail")
   }
 
   // 支払いバッチ詳細を閉じる関数を追加
   const closeBatchDetail = () => {
     setCurrentPage("management")
-    setSelectedBatchForDetail(null)
+    setSelectedBatch(null)
   }
 
   // 支払いバッチの団員明細を取得する関数を追加
@@ -545,11 +547,6 @@ export default function Component() {
 
   const closeCalculation = () => {
     setCurrentPage("batch-detail")
-    // selectedBatch の情報を selectedBatchForDetail に移す
-    if (selectedBatch) {
-      setSelectedBatchForDetail(selectedBatch)
-    }
-    setSelectedBatch(null)
   }
 
   // 報酬対象選択画面を開く
@@ -833,610 +830,7 @@ export default function Component() {
     }
   }, [selectedBatch, members])
 
-  // 報酬対象選択画面
-  if (currentPage === "reward-selection" && selectedBatch) {
-    return (
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* ヘッダーエリア */}
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center gap-4">
-              <Button variant="outline" size="sm" onClick={closeRewardSelection} className="bg-transparent">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                報酬計算に戻る
-              </Button>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <Users className="h-6 w-6 text-blue-600" />
-                報酬対象選択 - {selectedBatch.name}
-              </h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">{PAYMENT_TYPE_LABELS[selectedBatch.type]}</Badge>
-              <Badge className={PAYMENT_STATUS_COLORS[selectedBatch.status]}>
-                {PAYMENT_STATUS_LABELS[selectedBatch.status]}
-              </Badge>
-              <span className="text-muted-foreground">{selectedBatch.description}</span>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button 
-              onClick={closeRewardSelection}
-              disabled={selectedBatch.type === "dispatch" && selectedIncidents.length === 0}
-            >
-              選択完了
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6">
-          {/* 年額報酬の場合の年度選択 */}
-          {selectedBatch.type === "annual" && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-purple-600" />
-                  対象年度設定
-                </CardTitle>
-                <CardDescription>年額報酬の対象年度を設定してください</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="targetYear">対象年度</Label>
-                    <Select
-                      value={selectedYear.toString()}
-                      onValueChange={(value) => setSelectedYear(Number.parseInt(value))}
-                    >
-                      <SelectTrigger className="w-48">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((year) => (
-                          <SelectItem key={year} value={year.toString()}>
-                            {year}年度
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* 出動報酬の場合は事案選択のみ */}
-          {selectedBatch.type === "dispatch" && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Flame className="h-5 w-5 text-orange-600" />
-                  対象事案選択
-                </CardTitle>
-                <CardDescription>
-                  報酬計算対象とする事案を選択してください
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* 事案検索フィルター */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-                  <div className="space-y-2">
-                    <Label htmlFor="incidentSearch">事案名検索</Label>
-                    <Input
-                      id="incidentSearch"
-                      placeholder="事案名で検索..."
-                      className="bg-white"
-                      value={incidentSearchTerm}
-                      onChange={(e) => setIncidentSearchTerm(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="incidentType">事案種別</Label>
-                    <Select value={incidentTypeFilter} onValueChange={setIncidentTypeFilter}>
-                      <SelectTrigger className="bg-white">
-                        <SelectValue placeholder="すべて" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">すべて</SelectItem>
-                        <SelectItem value="fire">火災出動</SelectItem>
-                        <SelectItem value="rescue">救助出動</SelectItem>
-                        <SelectItem value="emergency">救急支援</SelectItem>
-                        <SelectItem value="training">訓練</SelectItem>
-                        <SelectItem value="patrol">警戒巡視</SelectItem>
-                        <SelectItem value="meeting">会議・点検</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="dateRange">期間</Label>
-                    <Input
-                      id="dateRange"
-                      type="date"
-                      className="bg-white"
-                      value={dateRangeFilter}
-                      onChange={(e) => setDateRangeFilter(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>データ取得</Label>
-                    <Button onClick={fetchIncidents} disabled={isLoadingIncidents} className="w-full">
-                      {isLoadingIncidents ? (
-                        <>
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          取得中...
-                        </>
-                      ) : (
-                        <>
-                          <Search className="h-4 w-4 mr-2" />
-                          事案検索
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* 選択状況表示 */}
-                {selectedIncidents.length > 0 && (
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <p className="text-sm font-medium text-blue-800 mb-2">
-                      選択中の事案: {selectedIncidents.length}件
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {selectedIncidents.map((incidentId) => {
-                        const incident = incidents.find(i => i.id === incidentId)
-                        return incident ? (
-                          <Badge key={incidentId} variant="secondary" className="text-xs">
-                            {incident.name}
-                          </Badge>
-                        ) : null
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* 事案一覧 */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {isLoadingIncidents ? "検索中..." : `検索結果: ${incidents.length}件`}
-                    </span>
-                    <Button variant="outline" size="sm" className="bg-transparent">
-                      <Plus className="h-4 w-4 mr-2" />
-                      新規事案登録
-                    </Button>
-                  </div>
-
-                  {isLoadingIncidents ? (
-                    <div className="text-center py-8">
-                      <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
-                      <p className="text-muted-foreground">事案データを取得中...</p>
-                    </div>
-                  ) : (
-                    incidents.map((incident) => (
-                      <div key={incident.id} className="flex items-start space-x-3 p-3 border rounded-lg">
-                        <Checkbox
-                          id={incident.id}
-                          checked={selectedIncidents.includes(incident.id)}
-                          onCheckedChange={(checked) => handleIncidentSelection(incident.id, !!checked)}
-                        />
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Label htmlFor={incident.id} className="font-medium cursor-pointer">
-                              {incident.name}
-                            </Label>
-                            <Badge variant="outline">{INCIDENT_TYPES[incident.type].name}</Badge>
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            <p>
-                              日時: {incident.date} ({incident.duration}時間)
-                            </p>
-                            <p>危険度: レベル{incident.riskLevel}</p>
-                            <p>参加者: {incident.participants.length}名</p>
-                            <p>{incident.description}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // 報酬集計機能画面（旧：支払いバッチ詳細画面）
-  if (currentPage === "batch-detail" && selectedBatchForDetail) {
-    const batchDetails = getBatchPaymentDetails(selectedBatchForDetail.id)
-
-    return (
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* ヘッダーエリア */}
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center gap-4">
-              <Button variant="outline" size="sm" onClick={closeBatchDetail} className="bg-transparent">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                支払い管理に戻る
-              </Button>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <FileText className="h-6 w-6 text-blue-600" />
-                報酬集計 - {selectedBatchForDetail.name}
-              </h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">{PAYMENT_TYPE_LABELS[selectedBatchForDetail.type]}</Badge>
-              <Badge className={PAYMENT_STATUS_COLORS[selectedBatchForDetail.status]}>
-                {PAYMENT_STATUS_LABELS[selectedBatchForDetail.status]}
-              </Badge>
-              <span className="text-muted-foreground">{selectedBatchForDetail.description}</span>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => openCalculation(selectedBatchForDetail)}
-              className="bg-transparent"
-            >
-              <Calculator className="h-4 w-4 mr-2" />
-              報酬計算
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={handleBulkExport}
-              className="bg-transparent"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              一括で明細を出力する
-            </Button>
-            
-            {/* ステータス別の操作ボタン */}
-            {selectedBatchForDetail.status === "editing" && (
-              <>
-                <Dialog open={isConfirmingStatus} onOpenChange={setIsConfirmingStatus}>
-                  <DialogTrigger asChild>
-                    <Button className="bg-blue-600 hover:bg-blue-700">
-                      支払いを確定する
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>支払い確定の確認</DialogTitle>
-                      <DialogDescription>
-                        支払いを確定すると、内容の編集ができなくなります。支払い予定日を入力して確定してください。
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="scheduledDate">支払い予定日</Label>
-                        <Input
-                          id="scheduledDate"
-                          type="date"
-                          value={scheduledPaymentDate}
-                          onChange={(e) => setScheduledPaymentDate(e.target.value)}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          onClick={handleConfirmStatus} 
-                          disabled={!scheduledPaymentDate}
-                          className="flex-1"
-                        >
-                          確定する
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setIsConfirmingStatus(false)
-                            setScheduledPaymentDate("")
-                          }}
-                          className="flex-1 bg-transparent"
-                        >
-                          キャンセル
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    deleteBatch(selectedBatchForDetail.id)
-                    closeBatchDetail()
-                  }}
-                  className="bg-transparent text-red-600 hover:text-red-700"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  削除
-                </Button>
-              </>
-            )}
-            
-            {selectedBatchForDetail.status === "confirmed" && (
-              <Button 
-                onClick={handleMarkAsPaid}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                支払い済みにする
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* 報酬集計（全体サマリー） */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calculator className="h-5 w-5 text-green-600" />
-              報酬集計（全体サマリー）
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">対象者</p>
-                <p className="text-3xl font-bold text-blue-600">{batchDetails.length}<span className="text-lg text-muted-foreground ml-1">名</span></p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">総支給額</p>
-                <p className="text-3xl font-bold text-green-600">
-                  {formatCurrency(batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0))}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">平均支給額</p>
-                <p className="text-3xl font-bold text-orange-600">
-                  {batchDetails.length > 0
-                    ? formatCurrency(
-                        batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0) / batchDetails.length,
-                      )
-                    : formatCurrency(0)}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">報酬種別</p>
-                <p className="text-3xl font-bold text-purple-600">{PAYMENT_TYPE_LABELS[selectedBatchForDetail.type]}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 団員ごとの報酬サマリー */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-green-600" />
-              団員ごとの報酬サマリー
-            </CardTitle>
-            <CardDescription>団員一人ひとりの支払い合計額を一覧表示します</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {batchDetails.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">このバッチには支払い明細がありません</p>
-                <p className="text-sm text-muted-foreground">報酬計算を実行して明細を作成してください</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>団員名</TableHead>
-                      <TableHead>階級</TableHead>
-                      {selectedBatchForDetail.type === "dispatch" && (
-                        <TableHead>総活動時間</TableHead>
-                      )}
-                      <TableHead>報酬額</TableHead>
-                      <TableHead>源泉徴収額</TableHead>
-                      <TableHead>その他控除額</TableHead>
-                      <TableHead>振込額</TableHead>
-                      <TableHead>操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {batchDetails.map((detail) => {
-                      // 合計値を計算
-                      const totalAllowances = detail.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0)
-                      const totalDeductions = detail.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0)
-                      const totalIncidentHours = detail.breakdown.incidents?.reduce((sum, i) => sum + i.hours, 0) || 0
-                      // 源泉徴収額を計算（報酬額の10.21%と仮定）
-                      const withholdingTax = Math.floor((detail.breakdown.baseAmount + totalAllowances) * 0.1021)
-                      const transferAmount = detail.breakdown.baseAmount + totalAllowances - withholdingTax - totalDeductions
-                      
-                      return (
-                        <TableRow 
-                          key={detail.id} 
-                          className="cursor-pointer hover:bg-gray-50"
-                          onClick={() => openMemberDetail(detail.memberId)}
-                        >
-                          <TableCell className="font-medium">{detail.memberName}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{detail.rank}</Badge>
-                          </TableCell>
-                          {selectedBatchForDetail.type === "dispatch" && (
-                            <TableCell>{totalIncidentHours}時間</TableCell>
-                          )}
-                          <TableCell>{formatCurrency(detail.breakdown.baseAmount + totalAllowances)}</TableCell>
-                          <TableCell>{formatCurrency(withholdingTax)}</TableCell>
-                          <TableCell>{formatCurrency(totalDeductions)}</TableCell>
-                          <TableCell className="font-semibold text-blue-600">
-                            {formatCurrency(transferAmount)}
-                          </TableCell>
-                          <TableCell>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="bg-transparent"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openMemberDetail(detail.memberId)
-                              }}
-                            >
-                              <Receipt className="h-4 w-4 mr-1" />
-                              明細
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // 団員個人の明細閲覧ページ
-  if (currentPage === "member-detail" && selectedMemberId) {
-    const member = members.find((m) => m.id === selectedMemberId)
-    const memberPayments = getMemberPaymentHistory(selectedMemberId)
-
-    return (
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center gap-4">
-              <Button variant="outline" size="sm" onClick={closeMemberDetail} className="bg-transparent">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                一覧に戻る
-              </Button>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <Receipt className="h-6 w-6 text-green-600" />
-                報酬明細 - {member?.name}
-              </h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge>{member ? RANKS[member.rank].name : ""}</Badge>
-              <span className="text-muted-foreground">勤続年数: {member?.yearsOfService}年</span>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => alert("明細出力機能は開発中です")}
-              className="bg-transparent"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              明細を出力する
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">今年度支給総額</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {formatCurrency(memberPayments.reduce((sum, payment) => sum + payment.totalAmount, 0))}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">支給回数</p>
-              <p className="text-2xl font-bold text-green-600">{memberPayments.length}回</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">最新支給日</p>
-              <p className="text-2xl font-bold text-orange-600">
-                {paymentBatches.find((b) => b.id === memberPayments[0]?.batchId)?.paymentDate || "未支給"}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-4">
-          {memberPayments.map((payment) => {
-            const batch = paymentBatches.find((b) => b.id === payment.batchId)
-            return (
-              <Card key={payment.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        {batch?.name}
-                        <Badge variant="outline">{PAYMENT_TYPE_LABELS[batch?.type || "dispatch"]}</Badge>
-                      </CardTitle>
-                      <CardDescription>
-                        支給日: {batch?.paymentDate || "未支給"} | 総額: {formatCurrency(payment.totalAmount)}
-                      </CardDescription>
-                    </div>
-                    <Badge className={PAYMENT_STATUS_COLORS[batch?.status || "draft"]}>
-                      {PAYMENT_STATUS_LABELS[batch?.status || "draft"]}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">基本額</p>
-                        <p className="font-semibold">{formatCurrency(payment.breakdown.baseAmount)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">手当合計</p>
-                        <p className="font-semibold">
-                          {formatCurrency(payment.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0))}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">控除合計</p>
-                        <p className="font-semibold">
-                          {formatCurrency(payment.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">支給額</p>
-                        <p className="font-semibold text-lg">{formatCurrency(payment.totalAmount)}</p>
-                      </div>
-                    </div>
-
-                    {payment.breakdown.allowances.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold mb-2">手当詳細</h4>
-                        <div className="space-y-1">
-                          {payment.breakdown.allowances.map((allowance, index) => (
-                            <div key={index} className="flex justify-between text-sm">
-                              <span>{allowance.name}</span>
-                              <span>{formatCurrency(allowance.amount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {payment.breakdown.incidents && payment.breakdown.incidents.length > 0 && (
-                      <div>
-                        <h4 className="font-semibold mb-2">出動詳細</h4>
-                        <div className="space-y-1">
-                          {payment.breakdown.incidents.map((incident, index) => (
-                            <div key={index} className="flex justify-between text-sm">
-                              <span>
-                                {incident.name} ({incident.hours}時間)
-                              </span>
-                              <span>{formatCurrency(incident.amount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  // 支払い管理ページ
+  // 支払い管理ページ（デフォルト画面）
   if (currentPage === "management") {
     return (
       <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -1654,10 +1048,10 @@ export default function Component() {
                                 {PAYMENT_STATUS_LABELS[batch.status]}
                               </Badge>
                             </div>
-                                                         {/* 説明文（レスポンシブ省略） */}
-                             <p className="text-muted-foreground text-sm overflow-hidden text-ellipsis whitespace-nowrap md:whitespace-normal md:line-clamp-2">
-                               {batch.description}
-                             </p>
+                            {/* 説明文（レスポンシブ省略） */}
+                            <p className="text-muted-foreground text-sm overflow-hidden text-ellipsis whitespace-nowrap md:whitespace-normal md:line-clamp-2">
+                              {batch.description}
+                            </p>
                           </div>
                         </div>
                         
@@ -1696,6 +1090,609 @@ export default function Component() {
             </div>
           </CardContent>
         </Card>
+      </div>
+    )
+  }
+
+  // 報酬対象選択画面
+  if (currentPage === "reward-selection" && selectedBatch) {
+    return (
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* ヘッダーエリア */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={closeRewardSelection} className="bg-transparent">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                報酬計算に戻る
+              </Button>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <Users className="h-6 w-6 text-blue-600" />
+                報酬対象選択 - {selectedBatch.name}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{PAYMENT_TYPE_LABELS[selectedBatch.type]}</Badge>
+              <Badge className={PAYMENT_STATUS_COLORS[selectedBatch.status]}>
+                {PAYMENT_STATUS_LABELS[selectedBatch.status]}
+              </Badge>
+              <span className="text-muted-foreground">{selectedBatch.description}</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              onClick={closeRewardSelection}
+              disabled={selectedBatch.type === "dispatch" && selectedIncidents.length === 0}
+            >
+              選択完了
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6">
+          {/* 年額報酬の場合の年度選択 */}
+          {selectedBatch.type === "annual" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-purple-600" />
+                  対象年度設定
+                </CardTitle>
+                <CardDescription>年額報酬の対象年度を設定してください</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="targetYear">対象年度</Label>
+                    <Select
+                      value={selectedYear.toString()}
+                      onValueChange={(value) => setSelectedYear(Number.parseInt(value))}
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                          <SelectItem key={year} value={year.toString()}>
+                            {year}年度
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 出動報酬の場合は事案選択のみ */}
+          {selectedBatch.type === "dispatch" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Flame className="h-5 w-5 text-orange-600" />
+                  対象事案選択
+                </CardTitle>
+                <CardDescription>
+                  報酬計算対象とする事案を選択してください
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* 事案検索フィルター */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="incidentSearch">事案名検索</Label>
+                    <Input
+                      id="incidentSearch"
+                      placeholder="事案名で検索..."
+                      className="bg-white"
+                      value={incidentSearchTerm}
+                      onChange={(e) => setIncidentSearchTerm(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="incidentType">事案種別</Label>
+                    <Select value={incidentTypeFilter} onValueChange={setIncidentTypeFilter}>
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="すべて" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">すべて</SelectItem>
+                        <SelectItem value="fire">火災出動</SelectItem>
+                        <SelectItem value="rescue">救助出動</SelectItem>
+                        <SelectItem value="emergency">救急支援</SelectItem>
+                        <SelectItem value="training">訓練</SelectItem>
+                        <SelectItem value="patrol">警戒巡視</SelectItem>
+                        <SelectItem value="meeting">会議・点検</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dateRange">期間</Label>
+                    <Input
+                      id="dateRange"
+                      type="date"
+                      className="bg-white"
+                      value={dateRangeFilter}
+                      onChange={(e) => setDateRangeFilter(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>データ取得</Label>
+                    <Button onClick={fetchIncidents} disabled={isLoadingIncidents} className="w-full">
+                      {isLoadingIncidents ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          取得中...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="h-4 w-4 mr-2" />
+                          事案検索
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* 選択状況表示 */}
+                {selectedIncidents.length > 0 && (
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm font-medium text-blue-800 mb-2">
+                      選択中の事案: {selectedIncidents.length}件
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedIncidents.map((incidentId) => {
+                        const incident = incidents.find(i => i.id === incidentId)
+                        return incident ? (
+                          <Badge key={incidentId} variant="secondary" className="text-xs">
+                            {incident.name}
+                          </Badge>
+                        ) : null
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 事案一覧 */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      {isLoadingIncidents ? "検索中..." : `検索結果: ${incidents.length}件`}
+                    </span>
+                    <Button variant="outline" size="sm" className="bg-transparent">
+                      <Plus className="h-4 w-4 mr-2" />
+                      新規事案登録
+                    </Button>
+                  </div>
+
+                  {isLoadingIncidents ? (
+                    <div className="text-center py-8">
+                      <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-muted-foreground">事案データを取得中...</p>
+                    </div>
+                  ) : (
+                    incidents.map((incident) => (
+                      <div key={incident.id} className="flex items-start space-x-3 p-3 border rounded-lg">
+                        <Checkbox
+                          id={incident.id}
+                          checked={selectedIncidents.includes(incident.id)}
+                          onCheckedChange={(checked) => handleIncidentSelection(incident.id, !!checked)}
+                        />
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor={incident.id} className="font-medium cursor-pointer">
+                              {incident.name}
+                            </Label>
+                            <Badge variant="outline">{INCIDENT_TYPES[incident.type].name}</Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            <p>
+                              日時: {incident.date} ({incident.duration}時間)
+                            </p>
+                            <p>危険度: レベル{incident.riskLevel}</p>
+                            <p>参加者: {incident.participants.length}名</p>
+                            <p>{incident.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // 報酬集計機能画面（旧：支払いバッチ詳細画面）
+  if (currentPage === "batch-detail" && selectedBatch) {
+    const batchDetails = getBatchPaymentDetails(selectedBatch.id)
+
+    return (
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* ヘッダーエリア */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={closeBatchDetail} className="bg-transparent">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                支払い管理に戻る
+              </Button>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <FileText className="h-6 w-6 text-blue-600" />
+                報酬集計 - {selectedBatch.name}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{PAYMENT_TYPE_LABELS[selectedBatch.type]}</Badge>
+              <Badge className={PAYMENT_STATUS_COLORS[selectedBatch.status]}>
+                {PAYMENT_STATUS_LABELS[selectedBatch.status]}
+              </Badge>
+              <span className="text-muted-foreground">{selectedBatch.description}</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => openCalculation(selectedBatch)}
+              className="bg-transparent"
+            >
+              <Calculator className="h-4 w-4 mr-2" />
+              報酬計算
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleBulkExport}
+              className="bg-transparent"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              一括で明細を出力する
+            </Button>
+            
+            {/* ステータス別の操作ボタン */}
+            {selectedBatch.status === "editing" && (
+              <>
+                <Dialog open={isConfirmingStatus} onOpenChange={setIsConfirmingStatus}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-blue-600 hover:bg-blue-700">
+                      支払いを確定する
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>支払い確定の確認</DialogTitle>
+                      <DialogDescription>
+                        支払いを確定すると、内容の編集ができなくなります。支払い予定日を入力して確定してください。
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="scheduledDate">支払い予定日</Label>
+                        <Input
+                          id="scheduledDate"
+                          type="date"
+                          value={scheduledPaymentDate}
+                          onChange={(e) => setScheduledPaymentDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={handleConfirmStatus} 
+                          disabled={!scheduledPaymentDate}
+                          className="flex-1"
+                        >
+                          確定する
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsConfirmingStatus(false)
+                            setScheduledPaymentDate("")
+                          }}
+                          className="flex-1 bg-transparent"
+                        >
+                          キャンセル
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    deleteBatch(selectedBatch.id)
+                    closeBatchDetail()
+                  }}
+                  className="bg-transparent text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  削除
+                </Button>
+              </>
+            )}
+            
+            {selectedBatch.status === "confirmed" && (
+              <Button 
+                onClick={handleMarkAsPaid}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                支払い済みにする
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* 報酬集計（全体サマリー） */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-green-600" />
+              報酬集計（全体サマリー）
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">対象者</p>
+                <p className="text-3xl font-bold text-blue-600">{batchDetails.length}<span className="text-lg text-muted-foreground ml-1">名</span></p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">総支給額</p>
+                <p className="text-3xl font-bold text-green-600">
+                  {formatCurrency(batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0))}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">平均支給額</p>
+                <p className="text-3xl font-bold text-orange-600">
+                  {batchDetails.length > 0
+                    ? formatCurrency(
+                        batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0) / batchDetails.length,
+                      )
+                    : formatCurrency(0)}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">報酬種別</p>
+                <p className="text-3xl font-bold text-purple-600">{PAYMENT_TYPE_LABELS[selectedBatch.type]}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 団員ごとの報酬サマリー */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-green-600" />
+              団員ごとの報酬サマリー
+            </CardTitle>
+            <CardDescription>団員一人ひとりの支払い合計額を一覧表示します</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {batchDetails.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">このバッチには支払い明細がありません</p>
+                <p className="text-sm text-muted-foreground">報酬計算を実行して明細を作成してください</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>団員名</TableHead>
+                      <TableHead>階級</TableHead>
+                      {selectedBatch.type === "dispatch" && (
+                        <TableHead>総活動時間</TableHead>
+                      )}
+                      <TableHead>報酬額</TableHead>
+                      <TableHead>源泉徴収額</TableHead>
+                      <TableHead>その他控除額</TableHead>
+                      <TableHead>振込額</TableHead>
+                      <TableHead>操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {batchDetails.map((detail) => {
+                      // 合計値を計算
+                      const totalAllowances = detail.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0)
+                      const totalDeductions = detail.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0)
+                      const totalIncidentHours = detail.breakdown.incidents?.reduce((sum, i) => sum + i.hours, 0) || 0
+                      // 源泉徴収額を計算（報酬額の10.21%と仮定）
+                      const withholdingTax = Math.floor((detail.breakdown.baseAmount + totalAllowances) * 0.1021)
+                      const transferAmount = detail.breakdown.baseAmount + totalAllowances - withholdingTax - totalDeductions
+                      
+                      return (
+                        <TableRow 
+                          key={detail.id} 
+                          className="cursor-pointer hover:bg-gray-50"
+                          onClick={() => openMemberDetail(detail.memberId)}
+                        >
+                          <TableCell className="font-medium">{detail.memberName}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{detail.rank}</Badge>
+                          </TableCell>
+                          {selectedBatch.type === "dispatch" && (
+                            <TableCell>{totalIncidentHours}時間</TableCell>
+                          )}
+                          <TableCell>{formatCurrency(detail.breakdown.baseAmount + totalAllowances)}</TableCell>
+                          <TableCell>{formatCurrency(withholdingTax)}</TableCell>
+                          <TableCell>{formatCurrency(totalDeductions)}</TableCell>
+                          <TableCell className="font-semibold text-blue-600">
+                            {formatCurrency(transferAmount)}
+                          </TableCell>
+                          <TableCell>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="bg-transparent"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openMemberDetail(detail.memberId)
+                              }}
+                            >
+                              <Receipt className="h-4 w-4 mr-1" />
+                              明細
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // 団員個人の明細閲覧ページ
+  if (currentPage === "member-detail" && selectedMemberId) {
+    const member = members.find((m) => m.id === selectedMemberId)
+    const memberPayments = getMemberPaymentHistory(selectedMemberId)
+
+    return (
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={closeMemberDetail} className="bg-transparent">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                一覧に戻る
+              </Button>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <Receipt className="h-6 w-6 text-green-600" />
+                報酬明細 - {member?.name}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge>{member ? RANKS[member.rank].name : ""}</Badge>
+              <span className="text-muted-foreground">勤続年数: {member?.yearsOfService}年</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => alert("明細出力機能は開発中です")}
+              className="bg-transparent"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              明細を出力する
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">今年度支給総額</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {formatCurrency(memberPayments.reduce((sum, payment) => sum + payment.totalAmount, 0))}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">支給回数</p>
+              <p className="text-2xl font-bold text-green-600">{memberPayments.length}回</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">最新支給日</p>
+              <p className="text-2xl font-bold text-orange-600">
+                {paymentBatches.find((b) => b.id === memberPayments[0]?.batchId)?.paymentDate || "未支給"}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          {memberPayments.map((payment) => {
+            const batch = paymentBatches.find((b) => b.id === payment.batchId)
+            return (
+              <Card key={payment.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        {batch?.name}
+                        <Badge variant="outline">{PAYMENT_TYPE_LABELS[batch?.type || "dispatch"]}</Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        支給日: {batch?.paymentDate || "未支給"} | 総額: {formatCurrency(payment.totalAmount)}
+                      </CardDescription>
+                    </div>
+                    <Badge className={PAYMENT_STATUS_COLORS[batch?.status || "editing"]}>
+                      {PAYMENT_STATUS_LABELS[batch?.status || "editing"]}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">基本額</p>
+                        <p className="font-semibold">{formatCurrency(payment.breakdown.baseAmount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">手当合計</p>
+                        <p className="font-semibold">
+                          {formatCurrency(payment.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0))}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">控除合計</p>
+                        <p className="font-semibold">
+                          {formatCurrency(payment.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">支給額</p>
+                        <p className="font-semibold text-lg">{formatCurrency(payment.totalAmount)}</p>
+                      </div>
+                    </div>
+
+                    {payment.breakdown.allowances.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold mb-2">手当詳細</h4>
+                        <div className="space-y-1">
+                          {payment.breakdown.allowances.map((allowance, index) => (
+                            <div key={index} className="flex justify-between text-sm">
+                              <span>{allowance.name}</span>
+                              <span>{formatCurrency(allowance.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {payment.breakdown.incidents && payment.breakdown.incidents.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold mb-2">出動詳細</h4>
+                        <div className="space-y-1">
+                          {payment.breakdown.incidents.map((incident, index) => (
+                            <div key={index} className="flex justify-between text-sm">
+                              <span>
+                                {incident.name} ({incident.hours}時間)
+                              </span>
+                              <span>{formatCurrency(incident.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
       </div>
     )
   }
@@ -2099,45 +2096,473 @@ export default function Component() {
     )
   }
 
-  // 団員個人の明細閲覧ページ
-  if (currentPage === "member-detail" && selectedMemberId) {
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Calendar className="h-5 w-5 text-purple-600" />
-                      対象年度設定
-                    </CardTitle>
-                    <CardDescription>年額報酬の対象年度を設定してください</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="targetYear">対象年度</Label>
-                        <Select
-                          value={selectedYear.toString()}
-                          onValueChange={(value) => setSelectedYear(Number.parseInt(value))}
-                        >
-                          <SelectTrigger className="w-48">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((year) => (
-                              <SelectItem key={year} value={year.toString()}>
-                                {year}年度
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+  // 報酬対象選択画面
+  if (currentPage === "reward-selection" && selectedBatch) {
+    return (
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={closeRewardSelection} className="bg-transparent">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                報酬計算に戻る
+              </Button>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <Target className="h-6 w-6 text-purple-600" />
+                報酬対象選択 - {selectedBatch.name}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{PAYMENT_TYPE_LABELS[selectedBatch.type]}</Badge>
+              <Badge className={PAYMENT_STATUS_COLORS[selectedBatch.status]}>
+                {PAYMENT_STATUS_LABELS[selectedBatch.status]}
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        {selectedBatch.type === "dispatch" ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-orange-600" />
+                出動事案選択
+              </CardTitle>
+              <CardDescription>出動報酬の対象となる事案を選択してください</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {incidents.map((incident) => (
+                  <Card key={incident.id} className="border">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          <Checkbox
+                            checked={selectedIncidents.includes(incident.id)}
+                            onCheckedChange={(checked) => 
+                              handleIncidentSelection(incident.id, checked as boolean)
+                            }
+                          />
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-semibold">{incident.name}</h4>
+                              <Badge variant="outline">
+                                {INCIDENT_TYPES[incident.type].name}
+                              </Badge>
+                              <Badge variant={incident.riskLevel > 3 ? "destructive" : "secondary"}>
+                                危険度{incident.riskLevel}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{incident.description}</p>
+                            <div className="flex gap-4 text-sm">
+                              <span>日時: {incident.date}</span>
+                              <span>活動時間: {incident.duration}時間</span>
+                              <span>参加者: {incident.participants.length}名</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-purple-600" />
+                対象年度設定
+              </CardTitle>
+              <CardDescription>年額報酬の対象年度を設定してください</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="targetYear">対象年度</Label>
+                  <Select
+                    value={selectedYear.toString()}
+                    onValueChange={(value) => setSelectedYear(Number.parseInt(value))}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                        <SelectItem key={year} value={year.toString()}>
+                          {year}年度
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     )
   }
+
+  // 支払いバッチ詳細画面（報酬集計）
+  if (currentPage === "batch-detail" && selectedBatch) {
+    const batchPaymentDetails = getBatchPaymentDetails(selectedBatch.id)
+    
+    return (
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* ヘッダーエリア */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={closeBatchDetail} className="bg-transparent">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                一覧に戻る
+              </Button>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <BarChart3 className="h-6 w-6 text-green-600" />
+                報酬集計 - {selectedBatch.name}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{PAYMENT_TYPE_LABELS[selectedBatch.type]}</Badge>
+              <Badge className={PAYMENT_STATUS_COLORS[selectedBatch.status]}>
+                {PAYMENT_STATUS_LABELS[selectedBatch.status]}
+              </Badge>
+              <span className="text-muted-foreground">{selectedBatch.description}</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={handleBulkExport}
+              className="bg-transparent"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              一括で明細を出力する
+            </Button>
+            
+            {/* ステータス別の操作ボタン */}
+            {selectedBatch.status === "editing" && (
+              <>
+                <Button 
+                  onClick={() => openCalculation(selectedBatch)}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Calculator className="h-4 w-4 mr-2" />
+                  報酬計算
+                </Button>
+                <Dialog open={isConfirmingStatus} onOpenChange={setIsConfirmingStatus}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-green-600 hover:bg-green-700">
+                      支払いを確定する
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>支払い確定の確認</DialogTitle>
+                      <DialogDescription>
+                        支払いを確定すると、内容の編集ができなくなります。支払い予定日を入力して確定してください。
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="scheduledDate">支払い予定日</Label>
+                        <Input
+                          id="scheduledDate"
+                          type="date"
+                          value={scheduledPaymentDate}
+                          onChange={(e) => setScheduledPaymentDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={handleConfirmStatus} 
+                          disabled={!scheduledPaymentDate}
+                          className="flex-1"
+                        >
+                          確定する
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsConfirmingStatus(false)
+                            setScheduledPaymentDate("")
+                          }}
+                          className="flex-1 bg-transparent"
+                        >
+                          キャンセル
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    deleteBatch(selectedBatch.id)
+                    closeBatchDetail()
+                  }}
+                  className="bg-transparent text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  削除
+                </Button>
+              </>
+            )}
+            
+            {selectedBatch.status === "confirmed" && (
+              <Button 
+                onClick={handleMarkAsPaid}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                支払い済みにする
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* 集計サマリー */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">対象者数</p>
+              <p className="text-2xl font-bold text-blue-600">{selectedBatch.memberCount}名</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">総支給額</p>
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(selectedBatch.totalAmount)}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">平均支給額</p>
+              <p className="text-2xl font-bold text-orange-600">
+                {formatCurrency(Math.floor(selectedBatch.totalAmount / selectedBatch.memberCount))}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">支払い予定日</p>
+              <p className="text-2xl font-bold text-purple-600">
+                {selectedBatch.scheduledPaymentDate?.replace(/-/g, '/') || "未設定"}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* 団員別支給明細 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-blue-600" />
+              団員別支給明細
+            </CardTitle>
+            <CardDescription>各団員の支給詳細を確認できます</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>団員名</TableHead>
+                    <TableHead>階級</TableHead>
+                    <TableHead>基本額</TableHead>
+                    <TableHead>手当合計</TableHead>
+                    <TableHead>控除合計</TableHead>
+                    <TableHead>支給額</TableHead>
+                    <TableHead>操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {batchPaymentDetails.map((detail) => (
+                    <TableRow key={detail.id}>
+                      <TableCell className="font-medium">{detail.memberName}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{detail.rank}</Badge>
+                      </TableCell>
+                      <TableCell>{formatCurrency(detail.breakdown.baseAmount)}</TableCell>
+                      <TableCell>
+                        {formatCurrency(detail.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0))}
+                      </TableCell>
+                      <TableCell>
+                        {formatCurrency(detail.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        {formatCurrency(detail.totalAmount)}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openMemberDetail(detail.memberId)}
+                          className="bg-transparent"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          詳細
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // 団員個人の明細閲覧ページ
+  if (currentPage === "member-detail" && selectedMemberId) {
+    const member = members.find((m) => m.id === selectedMemberId)
+    const memberPayments = getMemberPaymentHistory(selectedMemberId)
+
+    return (
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={closeMemberDetail} className="bg-transparent">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                一覧に戻る
+              </Button>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <Receipt className="h-6 w-6 text-green-600" />
+                報酬明細 - {member?.name}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge>{member ? RANKS[member.rank].name : ""}</Badge>
+              <span className="text-muted-foreground">勤続年数: {member?.yearsOfService}年</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => alert("明細出力機能は開発中です")}
+              className="bg-transparent"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              明細を出力する
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">今年度支給総額</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {formatCurrency(memberPayments.reduce((sum, payment) => sum + payment.totalAmount, 0))}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">支給回数</p>
+              <p className="text-2xl font-bold text-green-600">{memberPayments.length}回</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">最新支給日</p>
+              <p className="text-2xl font-bold text-orange-600">
+                {paymentBatches.find((b) => b.id === memberPayments[0]?.batchId)?.paymentDate || "未支給"}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          {memberPayments.map((payment) => {
+            const batch = paymentBatches.find((b) => b.id === payment.batchId)
+            return (
+              <Card key={payment.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        {batch?.name}
+                        <Badge variant="outline">{PAYMENT_TYPE_LABELS[batch?.type || "dispatch"]}</Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        支給日: {batch?.paymentDate || "未支給"} | 総額: {formatCurrency(payment.totalAmount)}
+                      </CardDescription>
+                    </div>
+                    <Badge className={PAYMENT_STATUS_COLORS[batch?.status || "editing"]}>
+                      {PAYMENT_STATUS_LABELS[batch?.status || "editing"]}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">基本額</p>
+                        <p className="font-semibold">{formatCurrency(payment.breakdown.baseAmount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">手当合計</p>
+                        <p className="font-semibold">
+                          {formatCurrency(payment.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0))}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">控除合計</p>
+                        <p className="font-semibold">
+                          {formatCurrency(payment.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">支給額</p>
+                        <p className="font-semibold text-lg">{formatCurrency(payment.totalAmount)}</p>
+                      </div>
+                    </div>
+
+                    {payment.breakdown.allowances.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold mb-2">手当詳細</h4>
+                        <div className="space-y-1">
+                          {payment.breakdown.allowances.map((allowance, index) => (
+                            <div key={index} className="flex justify-between text-sm">
+                              <span>{allowance.name}</span>
+                              <span>{formatCurrency(allowance.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {payment.breakdown.incidents && payment.breakdown.incidents.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold mb-2">出動詳細</h4>
+                        <div className="space-y-1">
+                          {payment.breakdown.incidents.map((incident, index) => (
+                            <div key={index} className="flex justify-between text-sm">
+                              <span>
+                                {incident.name} ({incident.hours}時間)
+                              </span>
+                              <span>{formatCurrency(incident.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+
 
   return null
 }
