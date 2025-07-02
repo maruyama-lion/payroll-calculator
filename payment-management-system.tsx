@@ -383,6 +383,10 @@ export default function Component() {
   
   // フィルタリング用の状態
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("all")
+  
+  // ステータス変更用の状態
+  const [isConfirmingStatus, setIsConfirmingStatus] = useState(false)
+  const [scheduledPaymentDate, setScheduledPaymentDate] = useState("")
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("ja-JP", {
@@ -449,19 +453,52 @@ export default function Component() {
     setIsEditingBatch(false)
   }
 
-  const updatePaymentBatchStatus = (batchId: string, status: PaymentStatus, scheduledPaymentDate?: string) => {
+  const updatePaymentBatchStatus = (batchId: string, status: PaymentStatus, scheduledPaymentDateInput?: string) => {
     const updateData: Partial<PaymentBatch> = { status }
 
     if (status === "confirmed") {
       updateData.confirmedDate = new Date().toISOString().split("T")[0]
-      if (scheduledPaymentDate) {
-        updateData.scheduledPaymentDate = scheduledPaymentDate
+      if (scheduledPaymentDateInput) {
+        updateData.scheduledPaymentDate = scheduledPaymentDateInput
       }
     } else if (status === "paid") {
       updateData.paymentDate = new Date().toISOString().split("T")[0]
     }
 
     setPaymentBatches((batches) => batches.map((batch) => (batch.id === batchId ? { ...batch, ...updateData } : batch)))
+  }
+
+  // ステータス確定処理
+  const handleConfirmStatus = () => {
+    if (selectedBatchForDetail && scheduledPaymentDate) {
+      updatePaymentBatchStatus(selectedBatchForDetail.id, "confirmed", scheduledPaymentDate)
+      setIsConfirmingStatus(false)
+      setScheduledPaymentDate("")
+      // 詳細画面のバッチ情報も更新
+      setSelectedBatchForDetail({
+        ...selectedBatchForDetail,
+        status: "confirmed",
+        confirmedDate: new Date().toISOString().split("T")[0],
+        scheduledPaymentDate: scheduledPaymentDate
+      })
+    }
+  }
+
+  // 支払い済み処理
+  const handleMarkAsPaid = () => {
+    if (selectedBatchForDetail) {
+      updatePaymentBatchStatus(selectedBatchForDetail.id, "paid")
+      setSelectedBatchForDetail({
+        ...selectedBatchForDetail,
+        status: "paid",
+        paymentDate: new Date().toISOString().split("T")[0]
+      })
+    }
+  }
+
+  // 一括明細出力
+  const handleBulkExport = () => {
+    alert("一括明細出力機能は開発中です")
   }
 
   const deleteBatch = (batchId: string) => {
@@ -781,12 +818,13 @@ export default function Component() {
     }
   }, [selectedBatch, members])
 
-  // 支払いバッチ詳細画面を追加（団員個人の明細閲覧ページの前に）
+  // 報酬集計機能画面（旧：支払いバッチ詳細画面）
   if (currentPage === "batch-detail" && selectedBatchForDetail) {
     const batchDetails = getBatchPaymentDetails(selectedBatchForDetail.id)
 
     return (
       <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* ヘッダーエリア */}
         <div className="flex items-center justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-4">
@@ -796,7 +834,7 @@ export default function Component() {
               </Button>
               <h1 className="text-2xl font-bold flex items-center gap-2">
                 <FileText className="h-6 w-6 text-blue-600" />
-                支払いバッチ詳細 - {selectedBatchForDetail.name}
+                報酬集計 - {selectedBatchForDetail.name}
               </h1>
             </div>
             <div className="flex items-center gap-2">
@@ -814,159 +852,208 @@ export default function Component() {
               className="bg-transparent"
             >
               <Calculator className="h-4 w-4 mr-2" />
-              給与計算
+              報酬計算
             </Button>
-            <Button variant="outline" className="bg-transparent">
+            <Button 
+              variant="outline" 
+              onClick={handleBulkExport}
+              className="bg-transparent"
+            >
               <Download className="h-4 w-4 mr-2" />
-              一括出力
+              一括で明細を出力する
             </Button>
+            
+            {/* ステータス別の操作ボタン */}
+            {selectedBatchForDetail.status === "editing" && (
+              <>
+                <Dialog open={isConfirmingStatus} onOpenChange={setIsConfirmingStatus}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-blue-600 hover:bg-blue-700">
+                      支払いを確定する
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>支払い確定の確認</DialogTitle>
+                      <DialogDescription>
+                        支払いを確定すると、内容の編集ができなくなります。支払い予定日を入力して確定してください。
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="scheduledDate">支払い予定日</Label>
+                        <Input
+                          id="scheduledDate"
+                          type="date"
+                          value={scheduledPaymentDate}
+                          onChange={(e) => setScheduledPaymentDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={handleConfirmStatus} 
+                          disabled={!scheduledPaymentDate}
+                          className="flex-1"
+                        >
+                          確定する
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsConfirmingStatus(false)
+                            setScheduledPaymentDate("")
+                          }}
+                          className="flex-1 bg-transparent"
+                        >
+                          キャンセル
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    deleteBatch(selectedBatchForDetail.id)
+                    closeBatchDetail()
+                  }}
+                  className="bg-transparent text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  削除
+                </Button>
+              </>
+            )}
+            
+            {selectedBatchForDetail.status === "confirmed" && (
+              <Button 
+                onClick={handleMarkAsPaid}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                支払い済みにする
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* バッチ情報サマリー */}
+        {/* 報酬集計（全体サマリー） */}
         <Card>
           <CardHeader>
-            <CardTitle>支払いバッチ情報</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-green-600" />
+              報酬集計（全体サマリー）
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">作成日</p>
-                <p className="font-medium">{selectedBatchForDetail.createdDate}</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">対象者</p>
+                <p className="text-3xl font-bold text-blue-600">{batchDetails.length}<span className="text-lg text-muted-foreground ml-1">名</span></p>
               </div>
-              {selectedBatchForDetail.calculatedDate && (
-                <div>
-                  <p className="text-sm text-muted-foreground">計算日</p>
-                  <p className="font-medium">{selectedBatchForDetail.calculatedDate}</p>
-                </div>
-              )}
-              {selectedBatchForDetail.paymentDate && (
-                <div>
-                  <p className="text-sm text-muted-foreground">支払日</p>
-                  <p className="font-medium">{selectedBatchForDetail.paymentDate}</p>
-                </div>
-              )}
-              <div>
-                <p className="text-sm text-muted-foreground">対象者数</p>
-                <p className="font-medium">{selectedBatchForDetail.memberCount}名</p>
-              </div>
-              <div>
+              <div className="text-center">
                 <p className="text-sm text-muted-foreground">総支給額</p>
-                <p className="font-medium text-lg">{formatCurrency(selectedBatchForDetail.totalAmount)}</p>
+                <p className="text-3xl font-bold text-green-600">
+                  {formatCurrency(batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0))}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">平均支給額</p>
+                <p className="text-3xl font-bold text-orange-600">
+                  {batchDetails.length > 0
+                    ? formatCurrency(
+                        batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0) / batchDetails.length,
+                      )
+                    : formatCurrency(0)}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">報酬種別</p>
+                <p className="text-3xl font-bold text-purple-600">{PAYMENT_TYPE_LABELS[selectedBatchForDetail.type]}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* 統計情報 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">支給対象者</p>
-              <p className="text-2xl font-bold text-blue-600">{batchDetails.length}名</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">総支給額</p>
-              <p className="text-2xl font-bold text-green-600">
-                {formatCurrency(batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0))}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">平均支給額</p>
-              <p className="text-2xl font-bold text-orange-600">
-                {batchDetails.length > 0
-                  ? formatCurrency(
-                      batchDetails.reduce((sum, detail) => sum + detail.totalAmount, 0) / batchDetails.length,
-                    )
-                  : formatCurrency(0)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-sm text-muted-foreground">支払い種別</p>
-              <p className="text-2xl font-bold text-purple-600">{PAYMENT_TYPE_LABELS[selectedBatchForDetail.type]}</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* 団員明細一覧 */}
+        {/* 団員ごとの報酬サマリー */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-green-600" />
-              団員明細一覧
+              団員ごとの報酬サマリー
             </CardTitle>
-            <CardDescription>このバッチで支払いを行った団員の明細一覧</CardDescription>
+            <CardDescription>団員一人ひとりの支払い合計額を一覧表示します</CardDescription>
           </CardHeader>
           <CardContent>
             {batchDetails.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-muted-foreground">このバッチには支払い明細がありません</p>
-                <p className="text-sm text-muted-foreground">給与計算を実行して明細を作成してください</p>
+                <p className="text-sm text-muted-foreground">報酬計算を実行して明細を作成してください</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {batchDetails.map((detail) => (
-                  <Card key={detail.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                    <CardContent className="p-4" onClick={() => openMemberDetail(detail.memberId)}>
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold">{detail.memberName}</h3>
-                            <Badge>{detail.rank}</Badge>
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">基本額</p>
-                              <p className="font-medium">{formatCurrency(detail.breakdown.baseAmount)}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">手当合計</p>
-                              <p className="font-medium">
-                                {formatCurrency(detail.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0))}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">控除合計</p>
-                              <p className="font-medium">
-                                {formatCurrency(detail.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0))}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">支給額</p>
-                              <p className="font-medium text-lg text-blue-600">{formatCurrency(detail.totalAmount)}</p>
-                            </div>
-                          </div>
-
-                          {/* 出動詳細（出動報酬の場合のみ） */}
-                          {selectedBatchForDetail.type === "dispatch" && detail.breakdown.incidents && (
-                            <div className="mt-3">
-                              <p className="text-sm font-medium text-muted-foreground mb-1">出動詳細:</p>
-                              <div className="flex flex-wrap gap-1">
-                                {detail.breakdown.incidents.map((incident, index) => (
-                                  <Badge key={index} variant="secondary" className="text-xs">
-                                    {incident.name} ({incident.hours}h)
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>団員名</TableHead>
+                      <TableHead>階級</TableHead>
+                      {selectedBatchForDetail.type === "dispatch" && (
+                        <TableHead>総活動時間</TableHead>
+                      )}
+                      <TableHead>報酬額</TableHead>
+                      <TableHead>源泉徴収額</TableHead>
+                      <TableHead>その他控除額</TableHead>
+                      <TableHead>振込額</TableHead>
+                      <TableHead>操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {batchDetails.map((detail) => {
+                      // 合計値を計算
+                      const totalAllowances = detail.breakdown.allowances.reduce((sum, a) => sum + a.amount, 0)
+                      const totalDeductions = detail.breakdown.deductions.reduce((sum, d) => sum + d.amount, 0)
+                      const totalIncidentHours = detail.breakdown.incidents?.reduce((sum, i) => sum + i.hours, 0) || 0
+                      // 源泉徴収額を計算（報酬額の10.21%と仮定）
+                      const withholdingTax = Math.floor((detail.breakdown.baseAmount + totalAllowances) * 0.1021)
+                      const transferAmount = detail.breakdown.baseAmount + totalAllowances - withholdingTax - totalDeductions
+                      
+                      return (
+                        <TableRow 
+                          key={detail.id} 
+                          className="cursor-pointer hover:bg-gray-50"
+                          onClick={() => openMemberDetail(detail.memberId)}
+                        >
+                          <TableCell className="font-medium">{detail.memberName}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{detail.rank}</Badge>
+                          </TableCell>
+                          {selectedBatchForDetail.type === "dispatch" && (
+                            <TableCell>{totalIncidentHours}時間</TableCell>
                           )}
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <Button variant="outline" size="sm" className="bg-transparent">
-                            <Receipt className="h-4 w-4 mr-2" />
-                            詳細を見る
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                          <TableCell>{formatCurrency(detail.breakdown.baseAmount + totalAllowances)}</TableCell>
+                          <TableCell>{formatCurrency(withholdingTax)}</TableCell>
+                          <TableCell>{formatCurrency(totalDeductions)}</TableCell>
+                          <TableCell className="font-semibold text-blue-600">
+                            {formatCurrency(transferAmount)}
+                          </TableCell>
+                          <TableCell>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="bg-transparent"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openMemberDetail(detail.memberId)
+                              }}
+                            >
+                              <Receipt className="h-4 w-4 mr-1" />
+                              明細
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </CardContent>
@@ -1375,21 +1462,21 @@ export default function Component() {
     )
   }
 
-  // 給与計算ページ（既存のロジックを継承）
+  // 報酬計算機能画面（旧：給与計算画面）
   if (currentPage === "calculation" && selectedBatch) {
     return (
       <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* ヘッダー */}
+        {/* ヘッダーエリア */}
         <div className="flex items-center justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-4">
               <Button variant="outline" size="sm" onClick={closeCalculation} className="bg-transparent">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                支払い管理に戻る
+                報酬集計に戻る
               </Button>
               <h1 className="text-2xl font-bold flex items-center gap-2">
                 <Calculator className="h-6 w-6 text-blue-600" />
-                給与計算 - {selectedBatch.name}
+                報酬計算 - {selectedBatch.name}
               </h1>
             </div>
             <div className="flex items-center gap-2">
@@ -1401,63 +1488,99 @@ export default function Component() {
             </div>
           </div>
           <div className="flex gap-2">
-            {selectedBatch.status !== "paid" && (
-              <Dialog open={isEditingBatch} onOpenChange={setIsEditingBatch}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="bg-transparent">
-                    <Edit className="h-4 w-4 mr-2" />
-                    バッチ編集
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>支払いバッチ編集</DialogTitle>
-                    <DialogDescription>支払いバッチの情報を編集します</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="editBatchName">支払い名称</Label>
-                      <Input
-                        id="editBatchName"
-                        value={newBatchData.name}
-                        onChange={(e) => setNewBatchData({ ...newBatchData, name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="editBatchDescription">説明</Label>
-                      <Textarea
-                        id="editBatchDescription"
-                        value={newBatchData.description}
-                        onChange={(e) => setNewBatchData({ ...newBatchData, description: e.target.value })}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button onClick={updatePaymentBatch} className="flex-1">
-                        更新
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsEditingBatch(false)}
-                        className="flex-1 bg-transparent"
-                      >
-                        キャンセル
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
-            <Button onClick={saveCalculation} disabled={isSaving || payrollCalculations.length === 0}>
-              <Save className="h-4 w-4 mr-2" />
-              {isSaving ? "保存中..." : "計算結果を保存"}
+            <Button 
+              variant="outline" 
+              onClick={handleBulkExport}
+              className="bg-transparent"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              一括で明細を出力する
             </Button>
+            
+            {/* ステータス別の操作ボタン */}
+            {selectedBatch.status === "editing" && (
+              <>
+                <Dialog open={isConfirmingStatus} onOpenChange={setIsConfirmingStatus}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-blue-600 hover:bg-blue-700">
+                      支払いを確定する
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>支払い確定の確認</DialogTitle>
+                      <DialogDescription>
+                        支払いを確定すると、内容の編集ができなくなります。支払い予定日を入力して確定してください。
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="scheduledDate">支払い予定日</Label>
+                        <Input
+                          id="scheduledDate"
+                          type="date"
+                          value={scheduledPaymentDate}
+                          onChange={(e) => setScheduledPaymentDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={handleConfirmStatus} 
+                          disabled={!scheduledPaymentDate}
+                          className="flex-1"
+                        >
+                          確定する
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsConfirmingStatus(false)
+                            setScheduledPaymentDate("")
+                          }}
+                          className="flex-1 bg-transparent"
+                        >
+                          キャンセル
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    deleteBatch(selectedBatch.id)
+                    closeCalculation()
+                  }}
+                  className="bg-transparent text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  削除
+                </Button>
+              </>
+            )}
+            
+            {selectedBatch.status === "confirmed" && (
+              <Button 
+                onClick={handleMarkAsPaid}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                支払い済みにする
+              </Button>
+            )}
+            
+            {selectedBatch.status === "editing" && (
+              <Button onClick={saveCalculation} disabled={isSaving || payrollCalculations.length === 0}>
+                <Save className="h-4 w-4 mr-2" />
+                {isSaving ? "保存中..." : "計算結果を保存"}
+              </Button>
+            )}
           </div>
         </div>
 
         <Tabs defaultValue="setup" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="setup">計算設定</TabsTrigger>
-            <TabsTrigger value="input">支給計算</TabsTrigger>
+            <TabsTrigger value="setup">報酬の登録</TabsTrigger>
+            <TabsTrigger value="input">報酬計算一覧</TabsTrigger>
             <TabsTrigger value="results">計算結果</TabsTrigger>
           </TabsList>
 
