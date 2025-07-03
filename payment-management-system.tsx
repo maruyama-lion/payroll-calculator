@@ -42,6 +42,7 @@ import {
   Target,
   AlertTriangle,
   BarChart3,
+  FileSpreadsheet,
 } from "lucide-react"
 
 // 支払い種別
@@ -501,6 +502,10 @@ export default function Component() {
   // 一括明細出力
   const handleBulkExport = () => {
     alert("一括明細出力機能は開発中です")
+  }
+
+  const handleExportForExternalSystem = () => {
+    alert("外部会計システム用エクスポート機能は開発中です")
   }
 
   const deleteBatch = (batchId: string) => {
@@ -1350,6 +1355,14 @@ export default function Component() {
             >
               <Download className="h-4 w-4 mr-2" />
               一括で明細を出力する
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleExportForExternalSystem}
+              className="bg-transparent"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              外部会計システム用エクスポート
             </Button>
             
             {/* ステータス別の操作ボタン */}
@@ -2240,6 +2253,14 @@ export default function Component() {
             >
               <Download className="h-4 w-4 mr-2" />
               一括で明細を出力する
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleExportForExternalSystem}
+              className="bg-transparent"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              外部会計システム用エクスポート
             </Button>
             
             {/* ステータス別の操作ボタン */}
