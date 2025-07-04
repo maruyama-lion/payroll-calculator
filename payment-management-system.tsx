@@ -1736,15 +1736,6 @@ export default function Component() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={handleBulkExport}
-              className="bg-transparent"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              一括で明細を出力する
-            </Button>
-            
             {/* ステータス別の操作ボタン */}
             {selectedBatch.status === "editing" && (
               <>
